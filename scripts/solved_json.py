@@ -1,10 +1,10 @@
 import random
 import json
 
-x = 450        
-d = 30         
-t_slots = 30  
-stations = 30  
+x =  700
+d = 50 
+t_slots = 300
+stations = 38  
 seed = 1337      
 
 random.seed(seed)
@@ -31,8 +31,8 @@ class Allocation:
         prevT_right = 0
         prevS_right = 0
 
-        limit_left = self.T * x - d
-        limit_right = (self.T + 1) * x + d
+        limit_left = self.T * x 
+        limit_right = (self.T + 1) * x + 2 * d
 
         if self.T > 0 and allocations[self.T - 1][self.S] is not None:
             prevS_right = allocations[self.T - 1][self.S].get_global_pos()[1]
@@ -44,7 +44,7 @@ class Allocation:
 
         gap = random.randint(0, 2*d // 2)
 
-        available_space = slot_right - slot_left - gap
+        available_space = slot_right - slot_left + gap
         new_size = min(x - gap, available_space)
         new_size = max(50, new_size)
 
@@ -103,9 +103,8 @@ def generate_json(name, shuffled):
 
         for entry in json_output:
             
-            bias = random.choice([-2, 2]) * random.uniform(0.3, 0.8) * d  
             for key in entry["offsets"]:
-                jitter = random.randint(-2*d, 3*d) + bias  
+                jitter = random.randint(0, 5*d) 
                 entry["offsets"][key] += int(jitter)
 
             for key in entry["data"]:

@@ -45,29 +45,33 @@ def csv_to_json(input_file):
             allocations.append(alloc)
 
     sorted_allocs = {}
-    # print(data_dict)
     prev_idx = 0 
     json_list = []
 
     for d in data_dict:
         json_data = {}
         json_offset = {}
+        json_overdraft = {}
+
         
         for alloc in allocations[prev_idx:]:
             if alloc.get_id() == d:
+                overdraft_key = f"s{alloc.station - 1}"
                 station_key = f"s{alloc.station}"
                 alloc_data = alloc.get_data()
                 json_data[station_key] = alloc_data[0]
                 json_offset[station_key] = alloc_data[1]
+                if overdraft_key != "s0":
+                    json_overdraft[overdraft_key] = alloc_data[1]
                 prev_idx += 1
             else:
                 continue
         json_list.append({
             "id": d,
             "data": json_data,
-            "offsets": json_offset
+            "offsets": json_offset,
+            "overdrafts": json_overdraft
         })
-    # print(json_list)
     json_output = json.dumps(json_list, indent=4)
     
     out_file = os.path.splitext(input_file)[0] + ".json"
@@ -99,7 +103,7 @@ def olov_offset(seq_num, station, size):
     #d = max[0, max[d(c, s-1), d(c-1,s)] + t(c, s) - T]
     (n_l, n_r) = find_neighbours_left(seq_num, station)
     # print("\nolov data:", n_l, n_r, T)
-    d = max(n_l, n_r)
+    d = max(0, max(n_l, n_r))
     # print("new offset: ", d)
     return int(d)
 

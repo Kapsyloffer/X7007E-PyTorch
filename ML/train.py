@@ -35,8 +35,8 @@ def train_model(config):
     dataset = ItemReorderingDataset(config["json_path"])
     dataloader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=True)
 
-    num_stations = dataset[0][0].shape[0]
-    input_dim = dataset[0][0].shape[1]  # size + offset
+    num_stations = dataset[0][0].shape[0] # Stations
+    input_dim = dataset[0][0].shape[1]  # size + offset; 2.
     output_dim = num_stations
 
     # Build transformer with original model

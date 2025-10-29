@@ -81,7 +81,7 @@ def csv_to_json(input_file):
         })
     json_output = json.dumps(json_list, indent=4)
     
-    out_file = os.path.splitext(input_file)[0] + ".json"
+    out_file = os.path.splitext(input_file)[0] + "_converted.json" #prevent overwriting existing data
     with open(out_file, "w") as f:
         f.write(json_output)
 

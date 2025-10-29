@@ -7,7 +7,8 @@ takt_time = 700 #cmin
 allocations = []
 
 class Allocation:
-    def __init__(self, chassi, timeslot, station, size, offset):
+    def __init__(self, period, chassi, timeslot, station, size, offset):
+        self.period = period
         self.chassi = chassi 
         self.timeslot = timeslot
         self.station = station
@@ -23,23 +24,28 @@ class Allocation:
     def get_id(self):
         return self.chassi;
 
+    def get_period(self):
+        return self.period
+
 def csv_to_json(input_file):
     data_dict = {}
+    period_dict = {}
     allocations.clear()  
 
     with open(input_file, newline='') as csvfile:
         reader = csv.reader(csvfile)
         for row in reader:
-            _, id_str, station_name, value, _ = row
+            period, id_str, station_name, value, _ = row
             id_num = int(id_str)
             station_number = int(station_name.split()[-1])
             value_float = float(value)
 
             if id_num not in data_dict:
                 data_dict[id_num] = {}
+                period_dict[id_num] = period
 
             offset = olov_offset(len(data_dict), station_number, value_float) 
-            alloc = Allocation(id_num, len(data_dict), station_number, value_float, offset)
+            alloc = Allocation(period, id_num, len(data_dict), station_number, value_float, offset)
             
             data_dict[id_num][station_number] = value_float
             allocations.append(alloc)
@@ -68,6 +74,7 @@ def csv_to_json(input_file):
                 continue
         json_list.append({
             "id": d,
+            "period": period_dict[d],
             "data": json_data,
             "offsets": json_offset,
             "overdrafts": json_overdraft

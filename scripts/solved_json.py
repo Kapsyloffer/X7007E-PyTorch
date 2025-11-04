@@ -3,7 +3,7 @@ import json
 
 x =  700
 d = 50 
-t_slots = 300
+t_slots = 3000
 stations = 38  
 seed = 1337      
 
@@ -116,8 +116,8 @@ def generate_json(name, shuffled):
     with open(f"jsons/{name}.json", "w") as f:
         json.dump(json_output, f, indent=4)
 
-    print(f"Sample from {name}:")
-    print(json.dumps(json_output[0], indent=4))
+    # print(f"Sample from {name}:")
+    # print(json.dumps(json_output[0], indent=4))
 
 
 generate_json("allocations", False)

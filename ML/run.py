@@ -16,10 +16,10 @@ class NumericInputWrapper(nn.Module):
         return self.proj(x)
 
 CONFIG = {
-    "json_path": "volvo_data/data.json",
+    "json_path": "jsons/shuffled.json",
     "model_folder": "weights",
     "d_model": 256,
-    "epoch": 9,  # checkpoint epoch
+    "epoch": 19,  # checkpoint epoch
     "output_json": "jsons/predicted.json"
 }
 

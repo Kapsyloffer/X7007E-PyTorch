@@ -1,9 +1,9 @@
 import json
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, random_split
 
 class ItemReorderingDataset(Dataset):
-    def __init__(self, json_path):
+    def __init__(self, json_path, train_frac=0.8):
         with open(json_path, "r") as f:
             raw = json.load(f)
 
@@ -24,8 +24,22 @@ class ItemReorderingDataset(Dataset):
             self.samples.append(x)
             self.targets.append(perm)
 
+        # Create a dataset split for training and validation
+        total_samples = len(self.samples)
+        train_size = int(train_frac * total_samples)
+        val_size = total_samples - train_size
+
+        # Randomly split the dataset into training and validation sets
+        self.train_data = list(zip(self.samples[:train_size], self.targets[:train_size]))
+        self.val_data = list(zip(self.samples[train_size:], self.targets[train_size:]))
+
     def __len__(self):
-        return len(self.samples)
+        return len(self.train_data)
 
     def __getitem__(self, idx):
-        return self.samples[idx], self.targets[idx]
+        # Return training data by default
+        return self.train_data[idx]
+
+    def get_val_data(self):
+        # Return validation data
+        return self.val_data

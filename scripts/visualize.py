@@ -26,7 +26,7 @@ obj_spacing = 700
 
 fig, ax = plt.subplots(figsize=(20, 12))
 
-colors = ["skyblue", "salmon", "gold", "lightgreen"]
+colors = ["salmon", "skyblue", "gold", "lightgreen"]
 
 slot_width = 50
 max_x = len(data) * obj_spacing

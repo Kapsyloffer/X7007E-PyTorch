@@ -4,8 +4,6 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from pathlib import Path
 from torch.utils.tensorboard import SummaryWriter
-import json
-import argparse
 
 from model import build_transformer
 from dataset import ItemReorderingDataset
@@ -14,36 +12,52 @@ from dataset import ItemReorderingDataset
 class CustomLoss(nn.Module):
     def __init__(self, alpha=1.0):
         super().__init__()
-        self.cross_entropy = nn.CrossEntropyLoss()
-        self.alpha = alpha  
+        self.ce = nn.CrossEntropyLoss()
+        self.alpha = alpha
 
-    def overlap_penalty(self, predictions, stations, obj_spacing):
+    def overlap_penalty(self, pred_perm, sizes):
+        B, N = pred_perm.shape
+        p = pred_perm.cpu().numpy()
+        s = sizes.cpu().numpy()
+        #o = offsets.cpu().numpy()
         penalty = 0.0
-        placed_rects = {y: [] for y in range(stations)}  
+        # print(p)
+        # print(s)
 
-        for obj_idx in range(predictions.size(0)):  
-            for station_idx in range(stations):
-                pred_start = predictions[obj_idx, station_idx, 0].item()
-                pred_end = pred_start + predictions[obj_idx, station_idx, 1].item()  
+        for b in range(B):
+            perm = p[b]
+            sz = s[b]
+            off = 0 #o[b]
 
-                for prev_start, prev_end in placed_rects[station_idx]:
-                    if pred_start < prev_end and pred_end > prev_start:
-                        penalty += 10  
+            placed = []
+            for pos in range(N):
+                item = int(perm[pos])
+                start = 0 #float(off[item])
+                end = start + float(sz[item])
 
-                placed_rects[station_idx].append((pred_start, pred_end))
+                for ps, pe in placed:
+                    if start < pe and end > ps:
+                        penalty += 1.0
+                placed.append((start, end))
 
         return penalty
 
-    def forward(self, logits, tgt, predictions, stations, obj_spacing):
-        ce_loss = self.cross_entropy(logits.view(-1, logits.size(-1)), tgt.view(-1))
-        overlap_loss = self.overlap_penalty(predictions, stations, obj_spacing)
-        total_loss = ce_loss + self.alpha * overlap_loss
-        return total_loss
+    def forward(self, logits, tgt, sizes):
+        B, T, V = logits.shape
+        T2 = tgt.size(1)
+
+        logits = logits[:, :T2, :]
+        ce = self.ce(logits.reshape(B * T2, V), tgt.reshape(B * T2))
+
+        with torch.no_grad():
+            pred = logits.argmax(dim=-1)
+
+        ov = self.overlap_penalty(pred, sizes)
+        return ce + self.alpha * ov
 
 
 class NumericInputWrapper(nn.Module):
-    #(size, offset) -> d_model
-    def __init__(self, input_dim: int, d_model: int):
+    def __init__(self, input_dim, d_model):
         super().__init__()
         self.proj = nn.Linear(input_dim, d_model)
 
@@ -58,6 +72,7 @@ def get_config():
         "num_epochs": 20,
         "d_model": 256,
         "lr": 1e-5,
+        "alpha": 1.0,
         "model_folder": "weights",
         "experiment_name": "runs/reordering_transformer"
     }
@@ -65,32 +80,28 @@ def get_config():
 
 def train_model(config):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
 
     dataset = ItemReorderingDataset(config["json_path"], train_frac=0.8)
+    train_loader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=True)
+    val_loader = DataLoader(dataset.get_val_data(), batch_size=config["batch_size"], shuffle=False)
 
-    train_dataloader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=True)
-    val_dataloader = DataLoader(dataset.get_val_data(), batch_size=config["batch_size"], shuffle=False)
+    src0, tgt0 = dataset[0]
+    num_items = src0.shape[0]
+    input_dim = src0.shape[1]
 
-    num_stations = dataset[0][0].shape[0]  # Stations
-    input_dim = dataset[0][0].shape[1]  # size + offset; 2.
-    output_dim = num_stations
-
-    # Build transformer with original model
     model = build_transformer(
-        src_vocab_size=num_stations,  # placeholder
-        tgt_vocab_size=output_dim,
-        src_seq_len=num_stations,
-        tgt_seq_len=num_stations,
+        src_vocab_size=num_items,
+        tgt_vocab_size=num_items,
+        src_seq_len=num_items,
+        tgt_seq_len=num_items,
         d_model=config["d_model"]
     ).to(device)
 
-    # Replace embeddings with numeric projections
-    model.src_embed = NumericInputWrapper(input_dim=input_dim, d_model=config["d_model"]).to(device)
-    model.tgt_embed = NumericInputWrapper(input_dim=input_dim, d_model=config["d_model"]).to(device)
+    model.src_embed = NumericInputWrapper(input_dim, config["d_model"]).to(device)
+    model.tgt_embed = NumericInputWrapper(input_dim, config["d_model"]).to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"])
-    loss_fn = CustomLoss(alpha=10.0)  # Use the custom loss function with an overlap penalty
+    loss_fn = CustomLoss(alpha=config["alpha"])
 
     Path(config["model_folder"]).mkdir(exist_ok=True, parents=True)
     writer = SummaryWriter(config["experiment_name"])
@@ -98,54 +109,48 @@ def train_model(config):
 
     for epoch in range(config["num_epochs"]):
         model.train()
-        # Train loop
-        for src, tgt in tqdm(train_dataloader, desc=f"Epoch {epoch:02d}"):
-            src, tgt = src.to(device), tgt.to(device)
+        for src, tgt in tqdm(train_loader, desc=f"Epoch {epoch:02d}"):
+            src = src.float().to(device)
+            tgt = tgt.long().to(device)
 
-            # Create src_mask and tgt_mask (set to None if not used)
-            src_mask = None
-            tgt_mask = None
+            sizes = src[..., 0]
+            offsets = src[..., 1]
 
-            enc_out = model.encode(src.float(), src_mask)  # Now passing the masks
-            dec_out = model.decode(enc_out, src_mask, src.float(), tgt_mask)  # Now passing the masks
-            logits = model.project(dec_out)  # (B, seq_len, seq_len)
+            # print(sizes)
+            # print(offsets)
 
-            # Assuming that the model output is of shape (B, seq_len, 2) where it predicts (x_start, x_end)
-            predictions = logits  # Adjust if necessary to match your output format
-
-            # Compute loss with overlap penalty
-            loss = loss_fn(logits, tgt, predictions, stations=num_stations, obj_spacing=700)
+            enc = model.encode(src.float(), None)
+            dec = model.decode(enc, None, src.float(), None)
+            logits = model.project(dec)
+            loss = loss_fn(logits, tgt, sizes)
 
             optimizer.zero_grad()
             loss.backward()
+
             optimizer.step()
 
-            writer.add_scalar("train_loss", loss.item(), global_step)
+            writer.add_scalar("train_loss", float(loss.detach()), global_step)
             global_step += 1
 
-        # Validation loop
         model.eval()
         val_loss = 0.0
         with torch.no_grad():
-            for src, tgt in val_dataloader:
-                src, tgt = src.to(device), tgt.to(device)
+            for src, tgt in val_loader:
+                src = src.float().to(device)
+                tgt = tgt.long().to(device)
 
-                # Create src_mask and tgt_mask (set to None if not used)
-                src_mask = None
-                tgt_mask = None
+                sizes = src[..., 0]
+                offsets = src[..., 1]
 
-                # Forward pass
-                enc_out = model.encode(src.float(), src_mask)
-                dec_out = model.decode(enc_out, src_mask, src.float(), tgt_mask)
-                logits = model.project(dec_out)
+                enc = model.encode(src, None)
+                dec = model.decode(enc, None, src, None)
+                logits = model.project(dec)
 
-                # Compute loss
-                val_loss += loss_fn(logits, tgt, logits, stations=num_stations, obj_spacing=700).item()
+                val_loss += float(loss_fn(logits, tgt, sizes))
 
-        val_loss /= len(val_dataloader)
+        val_loss /= len(val_loader)
         writer.add_scalar("val_loss", val_loss, global_step)
 
-        # Save model per epoch
         torch.save(model.state_dict(), Path(config["model_folder"]) / f"epoch_{epoch:02d}.pt")
 
     writer.close()

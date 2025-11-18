@@ -3,7 +3,7 @@ import json
 
 x =  700
 d = 50 
-t_slots = 15
+t_slots = 2
 stations = 5
 seed = 1337      
 
@@ -31,27 +31,52 @@ class Allocation:
         prevT_right = 0
         prevS_right = 0
 
-        limit_left = self.T * x 
-        limit_right = (self.T + 1) * x + 2 * d
+        min_size = 500
+        max_size = 850
+
+        limit_left = self.T * x - d
+        limit_right = (self.T + 1) * x + d
 
         if self.T > 0 and allocations[self.T - 1][self.S] is not None:
             prevS_right = allocations[self.T - 1][self.S].get_global_pos()[1]
         if self.prev is not None:
             prevT_right = self.prev.get_global_pos()[1]
+
         
-        slot_left = max(limit_left, max(prevT_right, prevS_right))
+        prev_left = max(prevT_right, prevS_right)
+        print("prev_left: ", prev_left, "max(", prevT_right, prevS_right, ")")
+
+        slot_left = max(prev_left, limit_left)
+        print("slot_left: ", slot_left, "max(", prev_left, limit_left, ")")
+
         slot_right = limit_right
 
-        gap = random.randint(0, 2*d // 2)
+        available_space = slot_right - slot_left
+        desired_size = random.randint(min_size, max_size)
 
-        available_space = slot_right - slot_left + gap
-        new_size = min(x - gap, available_space)
-        new_size = max(50, new_size)
+        new_size = min(desired_size, available_space)
+        new_size = max(min_size, new_size) 
 
-        self.offset = (slot_left + gap) - (self.T * x)
+        print("new size:", new_size)
+        
         self.size = new_size
+        print("Global pos: ", self.get_global_pos(), "\noffset&size: ", self.offset, self.size)
 
+        #padding:
+        (start, end) = self.get_global_pos()
+
+        #Vi har start och end i en allocation,
+        # Slot till höger begränsas av slot_right
+        # Slot till vänster: slot_left
+        # slot_right - end + start - slot_left = space
+
+        wiggle_room = slot_right - end + start - slot_left - 2*d
+        print("wiggle:", wiggle_room)
+
+        self.offset = wiggle_room /2
         allocations[self.T][self.S] = self
+
+        print("identifier: ", self.T - self.S, self.S, "\n\n")
 
 
 def generate_json(name, shuffled):

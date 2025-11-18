@@ -15,7 +15,7 @@ if isinstance(data, dict):
     data = list(data.values())
 
 # --- automatski broj stanica (sprječava KeyError) ---
-stations = 38
+stations = 5
 max_station_index = max(int(k[1:]) for obj in data for k in obj["data"].keys())
 if max_station_index > stations:
     stations = max_station_index
@@ -67,7 +67,7 @@ for obj_idx, obj in enumerate(data):
             value,
             row_height,
             facecolor=color,
-            edgecolor='black'
+            edgecolor=color
         ))
 
 for x, y, width, height in overlap_boxes:
@@ -79,8 +79,8 @@ for x, y, width, height in overlap_boxes:
         width,
         height,
         facecolor='red',
-        alpha=0.6,
-        edgecolor='black'
+        alpha=1,
+        edgecolor='red'
     ))
 
 # --- više tickova na x-osi ---

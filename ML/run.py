@@ -24,10 +24,10 @@ class Allocation:
         return (self.size, self.offset)
 
 CONFIG = {
-    "json_path": "jsons/shuffled.json",
+    "json_path": "jsons/predicted.json",
     "model_folder": "weights",
     "d_model": 256,
-    "epoch": 19,
+    "epoch": 9,
     "output_json": "jsons/predicted.json"
 }
 

@@ -10,48 +10,55 @@ from dataset import ItemReorderingDataset
 
 
 class CustomLoss(nn.Module):
-    def __init__(self, alpha=1.0):
+    def __init__(self, alpha=1.0, takt=700):
         super().__init__()
         self.ce = nn.CrossEntropyLoss()
         self.alpha = alpha
+        self.takt = takt
 
     def overlap_penalty(self, pred_perm, sizes):
         B, N = pred_perm.shape
-        p = pred_perm.cpu().numpy()
-        s = sizes.cpu().numpy()
-        #o = offsets.cpu().numpy()
         penalty = 0.0
-        # print(p)
-        # print(s)
+        stations = torch.arange(N).unsqueeze(0).repeat(B, 1)
 
         for b in range(B):
-            perm = p[b]
-            sz = s[b]
-            off = 0 #o[b]
+            perm = pred_perm[b].cpu().numpy()
+            sz = sizes[b].cpu().numpy()
+            stn = stations[b].cpu().numpy()
+            allocations = []
+            timeline = {s: [] for s in range(max(stn)+1)}
 
-            placed = []
-            for pos in range(N):
-                item = int(perm[pos])
-                start = 0 #float(off[item])
-                end = start + float(sz[item])
+            for seq_num, idx in enumerate(perm):
+                start_x = seq_num * self.takt
+                station = stn[idx]
 
-                for ps, pe in placed:
-                    if start < pe and end > ps:
+                offset = 0
+                n_l, n_r = -50, -50
+                for alloc in allocations:
+                    prev_seq, prev_stn, s, o = alloc
+                    if prev_seq == seq_num and prev_stn == station - 1:
+                        n_l = max(n_l, -self.takt + s + o)
+                    if prev_seq == seq_num - 1 and prev_stn == station:
+                        n_r = max(n_r, -self.takt + s + o)
+                offset = max(n_l, n_r, 0)
+
+                x_start = start_x + offset
+                x_end = x_start + sz[idx]
+
+                for ps, pe in timeline[station]:
+                    if x_start < pe and x_end > ps:
                         penalty += 1.0
-                placed.append((start, end))
 
-        return penalty
+                timeline[station].append((x_start, x_end))
+                allocations.append((seq_num, station, sz[idx], offset))
+
+        return penalty / B
 
     def forward(self, logits, tgt, sizes):
         B, T, V = logits.shape
-        T2 = tgt.size(1)
-
-        logits = logits[:, :T2, :]
-        ce = self.ce(logits.reshape(B * T2, V), tgt.reshape(B * T2))
-
-        with torch.no_grad():
-            pred = logits.argmax(dim=-1)
-
+        logits = logits[:, :T, :]
+        ce = self.ce(logits.reshape(B * T, V), tgt.reshape(B * T))
+        pred = logits.argmax(dim=-1)
         ov = self.overlap_penalty(pred, sizes)
         return ce + self.alpha * ov
 
@@ -68,11 +75,11 @@ class NumericInputWrapper(nn.Module):
 def get_config():
     return {
         "json_path": "jsons/allocations.json",
-        "batch_size": 8,
-        "num_epochs": 20,
+        "batch_size": 4,
+        "num_epochs": 10,
         "d_model": 256,
         "lr": 1e-5,
-        "alpha": 1.0,
+        "alpha": 0.1,
         "model_folder": "weights",
         "experiment_name": "runs/reordering_transformer"
     }
@@ -86,6 +93,7 @@ def train_model(config):
     val_loader = DataLoader(dataset.get_val_data(), batch_size=config["batch_size"], shuffle=False)
 
     src0, tgt0 = dataset[0]
+
     num_items = src0.shape[0]
     input_dim = src0.shape[1]
 
@@ -114,19 +122,14 @@ def train_model(config):
             tgt = tgt.long().to(device)
 
             sizes = src[..., 0]
-            offsets = src[..., 1]
 
-            # print(sizes)
-            # print(offsets)
-
-            enc = model.encode(src.float(), None)
-            dec = model.decode(enc, None, src.float(), None)
+            enc = model.encode(src, None)
+            dec = model.decode(enc, None, src, None)
             logits = model.project(dec)
             loss = loss_fn(logits, tgt, sizes)
 
             optimizer.zero_grad()
             loss.backward()
-
             optimizer.step()
 
             writer.add_scalar("train_loss", float(loss.detach()), global_step)
@@ -138,14 +141,11 @@ def train_model(config):
             for src, tgt in val_loader:
                 src = src.float().to(device)
                 tgt = tgt.long().to(device)
-
                 sizes = src[..., 0]
-                offsets = src[..., 1]
 
                 enc = model.encode(src, None)
                 dec = model.decode(enc, None, src, None)
                 logits = model.project(dec)
-
                 val_loss += float(loss_fn(logits, tgt, sizes))
 
         val_loss /= len(val_loader)

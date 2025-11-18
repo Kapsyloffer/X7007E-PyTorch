@@ -6,6 +6,7 @@ class ItemReorderingDataset(Dataset):
     def __init__(self, json_path, train_frac=0.8):
         with open(json_path, "r") as f:
             raw = json.load(f)
+            print(raw)
 
         self.samples = []
         self.targets = []
@@ -14,7 +15,6 @@ class ItemReorderingDataset(Dataset):
             data = entry["data"]
             offsets = entry.get("offsets", {k: 0 for k in data.keys()})
 
-            # Input tensor: [[size, offset], ...]
             x = [[data[k], offsets.get(k, 0)] for k in sorted(data.keys())]
             x = torch.tensor(x, dtype=torch.float)
 
@@ -37,9 +37,7 @@ class ItemReorderingDataset(Dataset):
         return len(self.train_data)
 
     def __getitem__(self, idx):
-        # Return training data by default
         return self.train_data[idx]
 
     def get_val_data(self):
-        # Return validation data
         return self.val_data

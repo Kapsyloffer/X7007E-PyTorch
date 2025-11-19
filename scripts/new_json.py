@@ -32,7 +32,7 @@ class Allocation:
         prevS_right = 0
 
         min_size = 500
-        max_size = 850
+        max_size = x + 2*d
 
         limit_left = self.T * x - d
         limit_right = (self.T + 1) * x + d
@@ -44,10 +44,7 @@ class Allocation:
 
         
         prev_left = max(prevT_right, prevS_right)
-        print("prev_left: ", prev_left, "max(", prevT_right, prevS_right, ")")
-
         slot_left = max(prev_left, limit_left)
-        print("slot_left: ", slot_left, "max(", prev_left, limit_left, ")")
 
         slot_right = limit_right
 
@@ -58,24 +55,10 @@ class Allocation:
         new_size = max(min_size, new_size) 
         
         self.offset = slot_left - self.T * x
-        print("base position: ", self.T * x)
-        print("new size:", new_size)
-        print("offset: ", self.offset)
         
         self.size = new_size
-        print("Global pos: ", self.get_global_pos(), "\noffset&size: ", self.offset, self.size)
-
-        #padding:
-        (start, end) = self.get_global_pos()
-
-        #Vi har start och end i en allocation,
-        # Slot till höger begränsas av slot_right
-        # Slot till vänster: slot_left
-        # slot_right - end + start - slot_left = space
 
         allocations[self.T][self.S] = self
-
-        print("identifier: ", self.T - self.S, self.S, "\n\n")
 
 
 def generate_json(name, shuffled):

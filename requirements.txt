@@ -2,3 +2,4 @@ torch
 tqdm
 tensorboard
 matplotlib
+PyQt5

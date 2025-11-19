@@ -2,9 +2,9 @@ import random
 import json
 
 x =  700
-d = 50 
-t_slots = 2
-stations = 5
+d = 150
+t_slots = 2000
+stations = 38
 seed = 1337      
 
 random.seed(seed)
@@ -56,8 +56,11 @@ class Allocation:
 
         new_size = min(desired_size, available_space)
         new_size = max(min_size, new_size) 
-
+        
+        self.offset = slot_left - self.T * x
+        print("base position: ", self.T * x)
         print("new size:", new_size)
+        print("offset: ", self.offset)
         
         self.size = new_size
         print("Global pos: ", self.get_global_pos(), "\noffset&size: ", self.offset, self.size)
@@ -70,10 +73,6 @@ class Allocation:
         # Slot till vänster: slot_left
         # slot_right - end + start - slot_left = space
 
-        wiggle_room = slot_right - end + start - slot_left - 2*d
-        print("wiggle:", wiggle_room)
-
-        self.offset = wiggle_room /2
         allocations[self.T][self.S] = self
 
         print("identifier: ", self.T - self.S, self.S, "\n\n")

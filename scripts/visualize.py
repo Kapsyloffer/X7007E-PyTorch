@@ -28,7 +28,7 @@ fig, ax = plt.subplots(figsize=(20, 12))
 
 colors = ["salmon", "skyblue", "gold", "lightgreen"]
 
-slot_width = 50
+slot_width = 150
 max_x = len(data) * obj_spacing
 
 overlap_count = 0

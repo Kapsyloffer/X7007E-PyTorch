@@ -6,7 +6,6 @@ class ItemReorderingDataset(Dataset):
     def __init__(self, json_path, train_frac=0.8):
         with open(json_path, "r") as f:
             raw = json.load(f)
-            print(raw)
 
         self.samples = []
         self.targets = []

@@ -7,6 +7,7 @@ import torch.nn as nn
 from tqdm import tqdm
 
 takt = 700
+d = 150
 
 class Allocation:
     def __init__(self, period, chassi, timeslot, station, size, offset):
@@ -24,7 +25,7 @@ class Allocation:
         return (self.size, self.offset)
 
 CONFIG = {
-    "json_path": "jsons/predicted.json",
+    "json_path": "jsons/shuffled.json",
     "model_folder": "weights",
     "d_model": 256,
     "epoch": 9,
@@ -105,17 +106,20 @@ def refit(allocs):
     allocations = []
 
     for seq_num, obj in enumerate(allocs):
-        start_x = seq_num * takt
+        slot_left = seq_num * takt - d #start
+        slot_right = (seq_num + 1) * takt + d #stop
+
         for station_key, size in obj["data"].items():
             station = int(station_key[1:]) - 1
-            offset = olov_offset(seq_num, station, size, allocations)
-            offset = obj["offsets"][station_key]
-            obj.setdefault("offsets", {})[station_key] = offset
-            x_start = start_x + offset
+            
+            offset = slot_left - seq_num * takt
+
+            x_start = slot_left + offset
             x_end = x_start + size
-
+            
+            obj.setdefault("offsets", {})[station_key] = offset
             alloc = Allocation(0, seq_num, seq_num + station, station, size, offset)
-
+            print(timeline[station])
             for prev_start, prev_end in timeline[station]:
                 if x_start < prev_end and x_end > prev_start:
                     overlaps += 1
@@ -125,23 +129,6 @@ def refit(allocs):
 
     print(f"Total overlaps detected: {overlaps}")
     return allocations
-
-def olov_offset(seq_num, station, size, allocations):
-    n_l, n_r = find_neighbours_left(seq_num, station, allocations)
-    return int(max(n_l, n_r))
-
-def find_neighbours_left(seq_num, station, allocations):
-    neighbours_left, neighbours_right = -50, -50
-    for x in allocations:
-        seq, stn = x.get_coords()
-        s, o = x.get_data()
-        if seq == seq_num and stn == station - 1:
-            edge_l = int(-takt + s + o)
-            neighbours_left = edge_l
-        if seq == seq_num - 1 and stn == station:
-            edge_r = int(-takt + s + o)
-            neighbours_right = edge_r
-    return neighbours_left, neighbours_right
 
 if __name__ == "__main__":
     main()

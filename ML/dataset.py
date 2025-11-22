@@ -2,7 +2,7 @@ import json
 import torch
 from torch.utils.data import Dataset, random_split
 
-class ItemReorderingDataset(Dataset):
+class Dataset(Dataset):
     def __init__(self, json_path, train_frac=0.8):
         with open(json_path, "r") as f:
             raw = json.load(f)
@@ -10,11 +10,15 @@ class ItemReorderingDataset(Dataset):
         self.samples = []
         self.targets = []
 
-        for entry in raw:
-            data = entry["data"]
-            offsets = entry.get("offsets", {k: 0 for k in data.keys()})
+        objects = []
 
-            x = [[data[k], offsets.get(k, 0)] for k in sorted(data.keys())]
+        for entry in raw:
+            obj_id = entry["data"]
+            data = entry["data"]
+            offsets = entry["offsets"]
+
+            x = [[data[k], offsets[k]] for k in sorted(data.keys())]
+            print(x)
             x = torch.tensor(x, dtype=torch.float)
 
             # Target permutation: original order

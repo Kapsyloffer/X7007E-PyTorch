@@ -1,161 +1,118 @@
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from tqdm import tqdm
-from pathlib import Path
-from torch.utils.tensorboard import SummaryWriter
 
 from model import build_transformer
-from dataset import ItemReorderingDataset
+from dataset import Dataset 
 
+from config import get_config
 
-class CustomLoss(nn.Module):
-    def __init__(self, alpha=1.0, takt=700):
-        super().__init__()
-        self.ce = nn.CrossEntropyLoss()
-        self.alpha = alpha
-        self.takt = takt
+config = get_config()
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
 
-    def overlap_penalty(self, pred_perm, sizes):
-        B, N = pred_perm.shape
-        penalty = 0.0
-        stations = torch.arange(N).unsqueeze(0).repeat(B, 1)
-
-        for b in range(B):
-            perm = pred_perm[b].cpu().numpy()
-            sz = sizes[b].cpu().numpy()
-            stn = stations[b].cpu().numpy()
-            allocations = []
-            timeline = {s: [] for s in range(max(stn)+1)}
-
-            for seq_num, idx in enumerate(perm):
-                start_x = seq_num * self.takt
-                station = stn[idx]
-
-                offset = 0
-                n_l, n_r = -50, -50
-                for alloc in allocations:
-                    prev_seq, prev_stn, s, o = alloc
-                    if prev_seq == seq_num and prev_stn == station - 1:
-                        n_l = max(n_l, -self.takt + s + o)
-                    if prev_seq == seq_num - 1 and prev_stn == station:
-                        n_r = max(n_r, -self.takt + s + o)
-                offset = max(n_l, n_r, 0)
-
-                x_start = start_x + offset
-                x_end = x_start + sz[idx]
-
-                for ps, pe in timeline[station]:
-                    if x_start < pe and x_end > ps:
-                        penalty += 1.0
-
-                timeline[station].append((x_start, x_end))
-                allocations.append((seq_num, station, sz[idx], offset))
-
-        return penalty / B
-
-    def forward(self, logits, tgt, sizes):
-        B, T, V = logits.shape
-        logits = logits[:, :T, :]
-        ce = self.ce(logits.reshape(B * T, V), tgt.reshape(B * T))
-        pred = logits.argmax(dim=-1)
-        ov = self.overlap_penalty(pred, sizes)
-        return ce + self.alpha * ov
-
-
-class NumericInputWrapper(nn.Module):
-    def __init__(self, input_dim, d_model):
-        super().__init__()
-        self.proj = nn.Linear(input_dim, d_model)
-
-    def forward(self, x):
-        return self.proj(x)
-
-
-def get_config():
-    return {
-        "json_path": "jsons/allocations.json",
-        "batch_size": 4,
-        "num_epochs": 10,
-        "d_model": 256,
-        "lr": 1e-5,
-        "alpha": 0.1,
-        "model_folder": "weights",
-        "experiment_name": "runs/reordering_transformer"
-    }
-
-
-def train_model(config):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    dataset = ItemReorderingDataset(config["json_path"], train_frac=0.8)
-    train_loader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=True)
-    val_loader = DataLoader(dataset.get_val_data(), batch_size=config["batch_size"], shuffle=False)
+def load_model(config):
+    dataset = Dataset(config["json_path"], train_frac = 0.8)
 
     src0, tgt0 = dataset[0]
 
+    # for i in range(len(dataset)):
+    #     print("dataset #",i, "\n", dataset[i], "\n")
+    
     num_items = src0.shape[0]
     input_dim = src0.shape[1]
 
+    print("objects: \t", len(dataset))
+    print("num_items: \t", num_items)
+    print("input_dim: \t", input_dim)
+
+    # Create mapping from unique [size, offset] pairs to integer IDs for embedding
+    unique_pairs = set()
+    for sample in dataset.samples:
+        for pair in sample.tolist():  # sample = Tensor([num_stations, 2])
+            unique_pairs.add(tuple(pair))  # make hashable
+    global pair2id
+    pair2id = {pair: i for i, pair in enumerate(unique_pairs)}
+    vocab_size = len(pair2id)
+    print("Vocab size (unique [size, offset] pairs):", vocab_size)
+
     model = build_transformer(
-        src_vocab_size=num_items,
-        tgt_vocab_size=num_items,
-        src_seq_len=num_items,
-        tgt_seq_len=num_items,
-        d_model=config["d_model"]
-    ).to(device)
+            src_vocab_size = vocab_size,  # use mapped vocab size
+            tgt_vocab_size = vocab_size,
+            src_seq_len = num_items, 
+            tgt_seq_len = num_items, 
+            d_model = config["d_model"]
+            ).to(device)
 
-    model.src_embed = NumericInputWrapper(input_dim, config["d_model"]).to(device)
-    model.tgt_embed = NumericInputWrapper(input_dim, config["d_model"]).to(device)
+    return model, dataset
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"])
-    loss_fn = CustomLoss(alpha=config["alpha"])
+# Optional: keep ObjectEmbedding in case you want numeric linear projection instead
+class ObjectEmbedding(nn.Module):
+    def __init__(self, d_model):
+        super().__init__()
+        self.linear = nn.Linear(2, d_model)
+    
+    def forward(self, x):
+        # x: [num_objects, num_stations, 2] => 2 = [size, offset]
+        # output: (num_objects, num_stations, d_model)
+        return self.linear(x)
 
-    Path(config["model_folder"]).mkdir(exist_ok=True, parents=True)
-    writer = SummaryWriter(config["experiment_name"])
-    global_step = 0
+# Convert batch of numeric [size, offset] pairs to integer IDs
+def batch_to_indices(batch_objects):
+    # batch_objects: [batch_size, num_stations, 2] float tensor
+    # returns: [batch_size, num_stations] LongTensor
+    batch_indices = []
+    for sample in batch_objects:           # sample: [num_stations, 2]
+        idxs = [pair2id[tuple(pair.tolist())] for pair in sample]
+        batch_indices.append(idxs)
+    return torch.tensor(batch_indices, dtype=torch.long) if batch_indices else torch.empty(0, dtype=torch.long)
+
+def Train():
+    model, dataset = load_model(config)
+    object_embedder = ObjectEmbedding(config["d_model"]).to(device)
+
+# Patch: bypass embedding layers
+    model.src_embed = nn.Identity()
+    model.tgt_embed = nn.Identity()
+    
+    train_loader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=True)
+    val_loader = DataLoader(dataset.get_val_data(), batch_size=config["batch_size"], shuffle=False)
+    
+    # model.parameters() = all trainable weights of transformer.
+    # object_embedder.parameters() = all weights of the embedding linear layer
+    optimizer = torch.optim.Adam(list(model.parameters()) + list(object_embedder.parameters()), lr=config["lr"])
+    criterion = nn.CrossEntropyLoss()
 
     for epoch in range(config["num_epochs"]):
         model.train()
-        for src, tgt in tqdm(train_loader, desc=f"Epoch {epoch:02d}"):
-            src = src.float().to(device)
-            tgt = tgt.long().to(device)
-
-            sizes = src[..., 0]
-
-            enc = model.encode(src, None)
-            dec = model.decode(enc, None, src, None)
-            logits = model.project(dec)
-            loss = loss_fn(logits, tgt, sizes)
+        total_loss = 0
+        # training loop
+        # batch_objects Tensor([num_stations, 2]) where 2 = [size, offset]
+        for batch_objects, batch_targets in train_loader:
+            batch_objects = batch_objects.to(device)   # numeric input
+            batch_targets = batch_targets.to(device)
+            
+            # [batch_size, num_stations, d_model]
+            batch_embed = object_embedder(batch_objects)
+            
+            # [batch_size, 1, d_model]; one vector per object as "sequence length 1"
+            src = batch_embed.mean(dim=1, keepdim=True)
+            tgt = batch_embed.mean(dim=1, keepdim=True)
+            
+            # Forward pass: numeric vectors go directly to encoder/decoder
+            encoder_output = model.encode(src, src_mask=None)
+            decoder_output = model.decode(encoder_output, src_mask=None, tgt=tgt, tgt_mask=None)
+            output = model.project(decoder_output).squeeze(1)  # [batch_size, num_classes]
+            
+            loss = criterion(output, batch_targets)
 
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
-            writer.add_scalar("train_loss", float(loss.detach()), global_step)
-            global_step += 1
+            total_loss += loss.item()
+        
+        print("Epoch:", epoch, "Loss:", total_loss)
 
-        model.eval()
-        val_loss = 0.0
-        with torch.no_grad():
-            for src, tgt in val_loader:
-                src = src.float().to(device)
-                tgt = tgt.long().to(device)
-                sizes = src[..., 0]
+Train()
 
-                enc = model.encode(src, None)
-                dec = model.decode(enc, None, src, None)
-                logits = model.project(dec)
-                val_loss += float(loss_fn(logits, tgt, sizes))
-
-        val_loss /= len(val_loader)
-        writer.add_scalar("val_loss", val_loss, global_step)
-
-        torch.save(model.state_dict(), Path(config["model_folder"]) / f"epoch_{epoch:02d}.pt")
-
-    writer.close()
-
-
-if __name__ == "__main__":
-    config = get_config()
-    train_model(config)

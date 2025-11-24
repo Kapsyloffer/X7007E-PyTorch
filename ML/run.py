@@ -2,12 +2,12 @@ import torch
 from pathlib import Path
 import json
 from model import build_transformer
-from dataset import ItemReorderingDataset
+from dataset import Dataset
 import torch.nn as nn
 from tqdm import tqdm
 
 takt = 700
-d = 150
+d = 200
 
 class Allocation:
     def __init__(self, period, chassi, timeslot, station, size, offset):
@@ -25,8 +25,8 @@ class Allocation:
         return (self.size, self.offset)
 
 CONFIG = {
-    "json_path": "jsons/shuffled.json",
-    "model_folder": "weights",
+    "json_path": "jsons/allocations.json",
+    "model_folder": "ML/weights",
     "d_model": 256,
     "epoch": 9,
     "output_json": "jsons/predicted.json"
@@ -63,7 +63,6 @@ def load_model(device, dataset):
 def predict_sample_score(model, sample_tensor, device):
     sample_tensor = sample_tensor.unsqueeze(0).to(device)
     tgt_tensor = sample_tensor
-
     with torch.no_grad():
         enc_out = model.encode(sample_tensor.float(), src_mask=None)
         dec_out = model.decode(enc_out, src_mask=None, tgt=tgt_tensor.float(), tgt_mask=None)
@@ -71,33 +70,19 @@ def predict_sample_score(model, sample_tensor, device):
         score = logits.mean().item()
     return score
 
-def main():
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+def calc_offset(seq, station, size, timeline):
+    if seq == 0 :
+        return -d
+    limit_left = seq * takt - d
+    prevS = timeline[station][-1][1] if timeline[station] else 0
+    slot_left = max(limit_left, prevS)
 
-    # Load JSON
-    with open(CONFIG["json_path"], "r") as f:
-        raw_json = json.load(f)
+    offset_left = slot_left - seq * takt
+    offset_right = takt + d - offset_left - size
 
-    model = load_model(device, ItemReorderingDataset(CONFIG["json_path"]))
-
-    # Score every JSON entry
-    sample_scores = []
-    for idx, obj in tqdm(enumerate(raw_json), desc="Scoring samples", total=len(raw_json)):
-        data_tensor = torch.tensor([[size, 0] for size in obj["data"].values()])  # offsets ignored
-        score = predict_sample_score(model, data_tensor, device)
-
-        sample_scores.append((idx, score))
-
-    sample_scores.sort(key=lambda x: x[1], reverse=True)
-    permuted_indices = [idx for idx, _ in sample_scores]
-
-    rearranged = [raw_json[i] for i in permuted_indices]
-    allocations = refit(rearranged)
-
-    with open(CONFIG["output_json"], "w") as f:
-        json.dump(rearranged, f, indent=4)
-
-    print(f"Predictions saved to {CONFIG['output_json']}")
+    offset = int(offset_left + (offset_right / 2))
+    offset = max(-d, min(offset, d))
+    return offset
 
 def refit(allocs):
     stations = len(allocs[0]["data"])
@@ -106,29 +91,45 @@ def refit(allocs):
     allocations = []
 
     for seq_num, obj in enumerate(allocs):
-        slot_left = seq_num * takt - d #start
-        slot_right = (seq_num + 1) * takt + d #stop
-
         for station_key, size in obj["data"].items():
             station = int(station_key[1:]) - 1
-            
-            offset = slot_left - seq_num * takt
-
-            x_start = slot_left + offset
+            offset = calc_offset(seq_num, station, size, timeline)
+            x_start = seq_num * takt + offset
             x_end = x_start + size
-            
             obj.setdefault("offsets", {})[station_key] = offset
-            alloc = Allocation(0, seq_num, seq_num + station, station, size, offset)
-            print(timeline[station])
             for prev_start, prev_end in timeline[station]:
                 if x_start < prev_end and x_end > prev_start:
                     overlaps += 1
-
             timeline[station].append((x_start, x_end))
-            allocations.append(alloc)
+            allocations.append(Allocation(0, seq_num, seq_num, station, size, offset))
 
     print(f"Total overlaps detected: {overlaps}")
     return allocations
+
+def main():
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    with open(CONFIG["json_path"], "r") as f:
+        raw_json = json.load(f)
+
+    model = load_model(device, Dataset(CONFIG["json_path"]))
+
+    sample_scores = []
+    for idx, obj in tqdm(enumerate(raw_json), desc="Scoring samples", total=len(raw_json)):
+        data_tensor = torch.tensor([[size, 0] for size in obj["data"].values()])
+        score = predict_sample_score(model, data_tensor, device)
+        sample_scores.append((idx, score))
+
+    sample_scores.sort(key=lambda x: x[1], reverse=True)
+    permuted_indices = [idx for idx, _ in sample_scores]
+
+    rearranged = [raw_json[i] for i in permuted_indices]
+    refit(rearranged)
+
+    with open(CONFIG["output_json"], "w") as f:
+        json.dump(rearranged, f, indent=4)
+
+    print(f"Predictions saved to {CONFIG['output_json']}")
 
 if __name__ == "__main__":
     main()

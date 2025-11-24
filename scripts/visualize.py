@@ -28,7 +28,7 @@ fig, ax = plt.subplots(figsize=(20, 12))
 
 colors = ["salmon", "skyblue", "gold", "lightgreen"]
 
-slot_width = 150
+slot_width = 200
 max_x = len(data) * obj_spacing
 
 overlap_count = 0
@@ -73,6 +73,7 @@ for obj_idx, obj in enumerate(data):
 for x, y, width, height in overlap_boxes:
     if width <= 1:
         overlap_count -= 1
+        continue
 
     ax.add_patch(patches.Rectangle(
         (x, y),
@@ -105,7 +106,7 @@ for i in range(len(data) + stations):
         (x - slot_width, 0),
         2 * slot_width,
         stations,
-        alpha=0.5,
+        alpha=0.2,
         edgecolor='white'
     ))
     ax.axvline(x=x, color='black', linewidth=1)

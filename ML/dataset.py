@@ -1,36 +1,38 @@
 import json
 import torch
 from torch.utils.data import Dataset, random_split
+from torch.nn.utils.rnn import pad_sequence
 
 class Dataset(Dataset):
     def __init__(self, json_path, train_frac=0.8):
         with open(json_path, "r") as f:
             raw = json.load(f)
 
-        self.samples = []
-        self.targets = []
+        self.samples = [] # Tensor av objekten: [stations, 2] där 2 är [data, offset]
+        self.targets = [] # OG ordning
 
-        objects = []
 
-        for entry in raw:
-            obj_id = entry["data"]
-            data = entry["data"]
-            offsets = entry["offsets"]
+        for i, entry in enumerate(raw):
+            keys = sorted(entry["data"].keys())
 
-            x = [[data[k], offsets[k]] for k in sorted(data.keys())]
-            print(x)
-            x = torch.tensor(x, dtype=torch.float)
-
-            # Target permutation: original order
-            perm = torch.arange(len(x), dtype=torch.long)
+            x = torch.tensor(
+                [[entry["data"][k], entry["offsets"][k]] for k in keys], dtype = torch.float
+            ) 
 
             self.samples.append(x)
-            self.targets.append(perm)
+            self.targets.append(i)
+        
+        self.targets = torch.tensor(self.targets, dtype=torch.long)
+
 
         # Create a dataset split for training and validation
         total_samples = len(self.samples)
+        indices = torch.randperm(total_samples) # <--- Skeptisk till den här TODO: Undersök med och utan den.
+
         train_size = int(train_frac * total_samples)
-        val_size = total_samples - train_size
+        train_idx = indices[:train_size]
+
+        val_size = indices[train_size:]
 
         # Randomly split the dataset into training and validation sets
         self.train_data = list(zip(self.samples[:train_size], self.targets[:train_size]))

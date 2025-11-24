@@ -3,7 +3,7 @@ from pathlib import Path
 def get_config():
     return {
         "json_path": "jsons/allocations.json",
-        "batch_size": 4,
+        "batch_size": 32,
         "num_epochs": 10,
         "d_model": 256,
         "lr": 1e-5,

@@ -2,10 +2,10 @@ import random
 import json
 
 takt =  700
-drift_area = 150
-gap = 10
-objects = 600
-stations = 38
+drift_area = 200
+gap = 20
+objects = 10
+stations = 5
 seed = 1337      
 
 min_size = 300
@@ -30,6 +30,9 @@ class Allocation:
     
     def get_global_pos(self):
         return global_pos(self.T, self.size, self.offset)
+
+    def get_prev(self):
+        return prev
 
     def gen(self):
         prevT_right = 0
@@ -64,6 +67,29 @@ class Allocation:
         allocations[self.T][self.S] = self
 
 
+def calc_offset(T, S, size):
+    prevT_right = 0
+    prevS_right = 0
+
+    limit_left = T * takt - drift_area
+    limit_right = (T + 1) * takt + drift_area
+
+    if T > 0 and allocations[T - 1][S] is not None:
+        prevS_right = allocations[T - 1][S].get_global_pos()[1]
+    if allocations[T][S].get_prev() is not None:
+        prevT_right = allocations[T][S].get_prev().get_global_pos()[1]
+
+    slot_left = max(limit_left, max(prevT_right, prevS_right)) 
+    slot_right = limit_right
+
+    offset_left = slot_left - self.T * takt 
+    offset_right = takt + drift_area - offset_left - new_size
+    offset = offset_left + (offset_right / 2) #utilize space between
+
+    offset = max(-drift_area, min(offset, drift_area)) # -d < offset < d
+
+    return offset
+
 def generate_json(name, shuffled):
     prev_list = []
 
@@ -89,8 +115,8 @@ def generate_json(name, shuffled):
             idx = traverse_prev_recursive(alloc.prev, idx, data, offsets)
 
         key = f"s{idx}"
-        data[key] = alloc.size
-        offsets[key] = alloc.offset
+        data[key] = int(alloc.size)
+        offsets[key] = int(alloc.offset)
         return idx + 1  
 
     def chain_to_json_recursive(last_alloc, chain_id):

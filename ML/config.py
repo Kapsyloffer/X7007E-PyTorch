@@ -2,7 +2,8 @@ from pathlib import Path
 
 def get_config():
     return {
-        "json_path": "jsons/allocations.json",
+        "training_path": "jsons/allocations.json",
+        "run_path": "jsons/shuffled.json",
         "output_json": "jsons/predicted.json",
         "batch_size": 8,
         "num_epochs": 10,

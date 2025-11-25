@@ -1,7 +1,7 @@
 /volvo_data/
 notes.md
 ML/__pycache__/
-/weights/
+ML/weights/
 /runs/
 /checkpoints/
 /jsons/

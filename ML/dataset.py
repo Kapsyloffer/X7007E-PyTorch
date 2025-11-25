@@ -1,40 +1,29 @@
 import json
 import torch
-from torch.utils.data import Dataset, random_split
-from torch.nn.utils.rnn import pad_sequence
+from torch.utils.data import Dataset as TorchDataset
 
-class Dataset(Dataset):
+class Dataset(TorchDataset):
     def __init__(self, json_path, train_frac=0.8):
         with open(json_path, "r") as f:
             raw = json.load(f)
 
-        self.samples = [] # Tensor av objekten: [stations, 2] där 2 är [data, offset]
-        self.targets = [] # OG ordning
+        self.samples = []  # [stations, 2]  (2 = [data, offset])
+        self.targets = []  # Tensor of permutation indices for sequence ordering
 
-
-        for i, entry in enumerate(raw):
+        for entry in raw:
             keys = sorted(entry["data"].keys())
-
             x = torch.tensor(
                 [[entry["data"][k], entry["offsets"][k]] for k in keys], dtype = torch.float
-            ) 
-
+            )
             self.samples.append(x)
-            self.targets.append(i)
-        
-        self.targets = torch.tensor(self.targets, dtype=torch.long)
 
+            # initial target = identity permutation (same length as num_stations)
+            self.targets.append(torch.arange(len(x), dtype=torch.long))
 
-        # Create a dataset split for training and validation
+        # Train / val split
         total_samples = len(self.samples)
-        indices = torch.randperm(total_samples) # <--- Skeptisk till den här TODO: Undersök med och utan den.
-
         train_size = int(train_frac * total_samples)
-        train_idx = indices[:train_size]
 
-        val_size = indices[train_size:]
-
-        # Randomly split the dataset into training and validation sets
         self.train_data = list(zip(self.samples[:train_size], self.targets[:train_size]))
         self.val_data = list(zip(self.samples[train_size:], self.targets[train_size:]))
 
@@ -46,3 +35,9 @@ class Dataset(Dataset):
 
     def get_val_data(self):
         return self.val_data
+    
+    def collate_fn(self, batch):
+        samples = torch.stack([item[0] for item in batch], dim=0)  # [batch, stations, 2]
+        targets = torch.stack([item[1] for item in batch], dim=0)  # [batch, stations]
+        return samples, targets
+

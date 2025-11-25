@@ -1,36 +1,16 @@
-import torch
-from pathlib import Path
 import json
-from model import build_transformer
-from dataset import Dataset
+import torch
 import torch.nn as nn
+
+from torch.utils.data import DataLoader
+from pathlib import Path
 from tqdm import tqdm
 
-takt = 700
-d = 200
+from model import build_transformer
+from dataset import Dataset
+from config import get_config
 
-class Allocation:
-    def __init__(self, period, chassi, timeslot, station, size, offset):
-        self.period = period
-        self.chassi = chassi 
-        self.timeslot = timeslot
-        self.station = station
-        self.size = size
-        self.offset = offset
-
-    def get_coords(self):
-        return (self.timeslot, self.station)
-    
-    def get_data(self):
-        return (self.size, self.offset)
-
-CONFIG = {
-    "json_path": "jsons/allocations.json",
-    "model_folder": "ML/weights",
-    "d_model": 256,
-    "epoch": 9,
-    "output_json": "jsons/predicted.json"
-}
+config = get_config()
 
 class NumericInputWrapper(nn.Module):
     def __init__(self, input_dim: int, d_model: int):
@@ -39,6 +19,7 @@ class NumericInputWrapper(nn.Module):
 
     def forward(self, x):
         return self.proj(x)
+
 
 def load_model(device, dataset):
     num_stations = dataset[0][0].shape[0]
@@ -49,87 +30,48 @@ def load_model(device, dataset):
         tgt_vocab_size=num_stations,
         src_seq_len=num_stations,
         tgt_seq_len=num_stations,
-        d_model=CONFIG["d_model"]
+        d_model=config["d_model"]
     ).to(device)
 
-    model.src_embed = NumericInputWrapper(input_dim=input_dim, d_model=CONFIG["d_model"]).to(device)
-    model.tgt_embed = NumericInputWrapper(input_dim=input_dim, d_model=CONFIG["d_model"]).to(device)
+    model.src_embed = NumericInputWrapper(input_dim=input_dim, d_model=config["d_model"]).to(device)
+    model.tgt_embed = NumericInputWrapper(input_dim=input_dim, d_model=config["d_model"]).to(device)
 
-    model_path = Path(CONFIG["model_folder"]) / f"epoch_{CONFIG['epoch']:02d}.pt"
-    model.load_state_dict(torch.load(model_path, map_location=device))
-    model.eval()
     return model
 
-def predict_sample_score(model, sample_tensor, device):
-    sample_tensor = sample_tensor.unsqueeze(0).to(device)
-    tgt_tensor = sample_tensor
+
+def predict_score(model, sample_tensor, device):
+    sample_tensor = sample_tensor.unsqueeze(0).float().to(device)
     with torch.no_grad():
-        enc_out = model.encode(sample_tensor.float(), src_mask=None)
-        dec_out = model.decode(enc_out, src_mask=None, tgt=tgt_tensor.float(), tgt_mask=None)
+        enc_out = model.encode(sample_tensor, src_mask=None)
+        dec_out = model.decode(enc_out, src_mask=None, tgt=sample_tensor, tgt_mask=None)
         logits = model.project(dec_out)
-        score = logits.mean().item()
-    return score
+        return logits.mean().item()
 
-def calc_offset(seq, station, size, timeline):
-    if seq == 0 :
-        return -d
-    limit_left = seq * takt - d
-    prevS = timeline[station][-1][1] if timeline[station] else 0
-    slot_left = max(limit_left, prevS)
-
-    offset_left = slot_left - seq * takt
-    offset_right = takt + d - offset_left - size
-
-    offset = int(offset_left + (offset_right / 2))
-    offset = max(-d, min(offset, d))
-    return offset
-
-def refit(allocs):
-    stations = len(allocs[0]["data"])
-    overlaps = 0
-    timeline = {s: [] for s in range(stations)}
-    allocations = []
-
-    for seq_num, obj in enumerate(allocs):
-        for station_key, size in obj["data"].items():
-            station = int(station_key[1:]) - 1
-            offset = calc_offset(seq_num, station, size, timeline)
-            x_start = seq_num * takt + offset
-            x_end = x_start + size
-            obj.setdefault("offsets", {})[station_key] = offset
-            for prev_start, prev_end in timeline[station]:
-                if x_start < prev_end and x_end > prev_start:
-                    overlaps += 1
-            timeline[station].append((x_start, x_end))
-            allocations.append(Allocation(0, seq_num, seq_num, station, size, offset))
-
-    print(f"Total overlaps detected: {overlaps}")
-    return allocations
 
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    with open(CONFIG["json_path"], "r") as f:
+    with open(config["json_path"], "r") as f:
         raw_json = json.load(f)
 
-    model = load_model(device, Dataset(CONFIG["json_path"]))
+    dataset = Dataset(config["json_path"])
+    model = load_model(device, dataset)
+    model.eval()
 
-    sample_scores = []
-    for idx, obj in tqdm(enumerate(raw_json), desc="Scoring samples", total=len(raw_json)):
-        data_tensor = torch.tensor([[size, 0] for size in obj["data"].values()])
-        score = predict_sample_score(model, data_tensor, device)
-        sample_scores.append((idx, score))
+    scores = []
+    for idx, (sample_tensor, _) in tqdm(enumerate(dataset), total=len(dataset), desc="Scoring samples"):
+        scores.append((idx, predict_score(model, sample_tensor, device)))
 
-    sample_scores.sort(key=lambda x: x[1], reverse=True)
-    permuted_indices = [idx for idx, _ in sample_scores]
+    scores.sort(key=lambda x: x[1], reverse=True)
+    permuted_indices = [idx for idx, _ in scores]
 
     rearranged = [raw_json[i] for i in permuted_indices]
-    refit(rearranged)
 
-    with open(CONFIG["output_json"], "w") as f:
+    with open(config["output_json"], "w") as f:
         json.dump(rearranged, f, indent=4)
 
-    print(f"Predictions saved to {CONFIG['output_json']}")
+    print(f"Predictions saved to {config['output_json']}")
+
 
 if __name__ == "__main__":
     main()

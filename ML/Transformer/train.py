@@ -104,7 +104,8 @@ def Train():
             total_loss += loss.detach().item()
         
         print("Epoch:", epoch, "Loss:", total_loss)
-
+    
+    Path(config["model_folder"]).mkdir(parents=True, exist_ok=True) 
     torch.save(model.state_dict(), Path(config["model_folder"]) / f"epoch_{epoch:02d}.pt")
 
 Train()

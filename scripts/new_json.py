@@ -1,5 +1,6 @@
 import random
 import json
+from pathlib import Path
 
 takt =  700
 drift_area = 200
@@ -138,7 +139,8 @@ def generate_json(name, shuffled):
         random.shuffle(json_output)
         for new_id, entry in enumerate(json_output, start=1):
             entry["id"] = new_id 
-    
+   
+    Path("jsons").mkdir(parents=True, exist_ok=True)  
     with open(f"jsons/{name}.json", "w") as f:
         json.dump(json_output, f, indent=4)
 

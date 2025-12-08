@@ -125,7 +125,7 @@ def generate_json(name, shuffled):
         offsets = {}
         traverse_prev_recursive(last_alloc, 1, data, offsets)
         return {
-            "id": chain_id,
+            "object": chain_id,
             "data": data,
             "offsets": offsets
         }

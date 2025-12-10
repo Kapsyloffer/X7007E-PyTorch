@@ -6,7 +6,7 @@ def get_config():
         "run_path": "jsons/shuffled.json",
         "output_json": "jsons/predicted.json",
         "batch_size": 8,
-        "num_epochs": 50,
+        "num_epochs": 10,
         "d_model": 256,
         "lr": 1e-6,
         "alpha": 0.2,

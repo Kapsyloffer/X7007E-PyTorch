@@ -7,25 +7,35 @@ class Dataset(TorchDataset):
         with open(json_path, "r") as f:
             raw = json.load(f)
 
-        self.samples = []  # [stations, 2]  (2 = [data, offset])
-        self.targets = []  # Tensor of permutation indices for sequence ordering
+        self.samples = []  # [obj_id, station_idx, data, offset]
+
+        last = raw[0]["object"]
+        stack = None
+        x = None
 
         for entry in raw:
             keys = sorted(entry["data"].keys())
-            x = torch.tensor(
-                [[entry["data"][k], entry["offsets"][k]] for k in keys], dtype = torch.float
-            )
-            self.samples.append(x)
 
-            # initial target = identity permutation (same length as num_stations)
-            self.targets.append(torch.arange(len(x), dtype=torch.long))
+            if(entry["object"] is last or last is None):
+                y = torch.tensor([[entry["object"], i, entry["data"][k], entry["offsets"][k]] for i, k in enumerate(keys)], dtype = torch.float)
+                if(x is not None):
+                    x = torch.cat((x, y), dim=0)
+                else:
+                    x = y
+            else:
+                print(x)
+                
+                self.samples.append(x)
 
+                last = entry["object"]
+                x = torch.tensor([[entry["object"], i, entry["data"][k], entry["offsets"][k]] for i, k in enumerate(keys)], dtype = torch.float)
+        print(self.samples)
         # Train / val split
         total_samples = len(self.samples)
         train_size = int(train_frac * total_samples)
 
-        self.train_data = list(zip(self.samples[:train_size], self.targets[:train_size]))
-        self.val_data = list(zip(self.samples[train_size:], self.targets[train_size:]))
+        self.train_data = self.samples[:train_size]
+        self.val_data = self.samples[train_size:]
 
     def __len__(self):
         return len(self.train_data)
@@ -36,8 +46,3 @@ class Dataset(TorchDataset):
     def get_val_data(self):
         return self.val_data
     
-    def collate_fn(self, batch):
-        samples = torch.stack([item[0] for item in batch], dim=0)  # [batch, stations, 2]
-        targets = torch.stack([item[1] for item in batch], dim=0)  # [batch, stations]
-        return samples, targets
-

@@ -9,11 +9,12 @@ from dataset import Dataset
 from config import get_config
 
 config = get_config()
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cpu")
     
 
 def load_model(config):
-    dataset = Dataset(config["training_path"], train_frac = 0.8)
+    dataset = Dataset(config["training_path"])
 
     src0, tgt0 = dataset[0]
 
@@ -60,19 +61,16 @@ def Train():
     model, dataset = load_model(config)
     object_embedder = ObjectEmbedding(config["d_model"]).to(device)
 
-    model.src_embed = nn.Identity()
-    model.tgt_embed = nn.Identity()
-    
-    train_loader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=True, collate_fn=dataset.collate_fn)
-    val_loader = DataLoader(dataset.get_val_data(), batch_size=config["batch_size"], shuffle=False, collate_fn=dataset.collate_fn)
-    
     optimizer = torch.optim.Adam(list(model.parameters()) + list(object_embedder.parameters()), lr=config["lr"])
     loss_fn = nn.CrossEntropyLoss()
 
     for epoch in range(config["num_epochs"]):
+
         model.train()
         total_loss = 0
+
         for batch_objects, batch_targets in train_loader:
+
             batch_objects = batch_objects.to(device)
             batch_targets = batch_targets.to(device)
 

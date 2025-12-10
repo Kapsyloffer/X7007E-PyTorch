@@ -49,7 +49,8 @@ def predict_score(model, sample_tensor, device):
 
 
 def main():
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cpu")
 
     with open(config["run_path"], "r") as f:
         raw_json = json.load(f)

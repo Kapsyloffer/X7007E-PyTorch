@@ -49,13 +49,13 @@ def predict_score(model, sample_tensor, device):
 
 
 def main():
-    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    device = torch.device("cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # device = torch.device("cpu")
 
     with open(config["run_path"], "r") as f:
         raw_json = json.load(f)
 
-    dataset = Dataset(config["run_path"])
+    dataset = Dataset(config["run_path"], train_frac=1.0)
     model = load_model(device, dataset)
     model.eval()
 

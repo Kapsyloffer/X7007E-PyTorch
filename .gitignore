@@ -1,6 +1,9 @@
 /volvo_data/
 notes.md
-ML/*/__pycache__/
-ML/weights/
+# WHY DOESNT IT WORK AAAAAAAAAAAAAAA
+/ML/Transformer/__pycache__/
+/ML/PointerNetwork/__pycache__/ 
+/ML/weights/
 /runs/
 /checkpoints/
+*.pyc

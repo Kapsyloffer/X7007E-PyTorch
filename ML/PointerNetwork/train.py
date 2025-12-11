@@ -10,3 +10,8 @@ from config import get_config
 
 
 config = get_config()
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+def load_model(config):
+    dataset = Dataset(config["training_path"])
+    return None

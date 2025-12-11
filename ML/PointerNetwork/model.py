@@ -8,7 +8,7 @@ class PointerNet(nn.Module):
         self.hidden_dim = hidden_dim
         self.encoder = nn.LSTM(input_dim, hidden_dim, batch_first=True)
         self.decoder = nn.LSTM(input_dim, hidden_dim, batch_first=True)
-        #Attention 
+        
         self.W1 = nn.Linear(hidden_dim, hidden_dim)
         self.W2 = nn.Linear(hidden_dim, hidden_dim)
         self.vt = nn.Linear(hidden_dim, 1, bias=False)
@@ -17,7 +17,6 @@ class PointerNet(nn.Module):
         batch_size, seq_len, _ = x.size()
         encoder_outputs, (h, c) = self.encoder(x)
 
-        # Start token for decoder (can be zeros)
         decoder_input = torch.zeros(batch_size, 1, x.size(2), device=x.device)
         decoder_hidden = (h, c)
 
@@ -26,15 +25,12 @@ class PointerNet(nn.Module):
         for _ in range(seq_len):
             decoder_output, decoder_hidden = self.decoder(decoder_input, decoder_hidden)
 
-            # Compute attention scores
             u = self.vt(torch.tanh(self.W1(encoder_outputs) + self.W2(decoder_output)))
             attn_scores = u.squeeze(-1)
             attn_probs = F.softmax(attn_scores, dim=1)
 
-            # Save pointer
             pointers.append(attn_probs)
 
-            # For next step, use the weighted sum of encoder outputs
             decoder_input = torch.bmm(attn_probs.unsqueeze(1), encoder_outputs)
 
         return torch.stack(pointers, dim=1)

@@ -32,7 +32,7 @@ class Dataset(TorchDataset):
 
         self.targetize(self.samples)
 
-        # print(self.samples)
+        print(self.samples)
         # Train / val split
         total_samples = len(self.samples)
         train_size = int(train_frac * total_samples)

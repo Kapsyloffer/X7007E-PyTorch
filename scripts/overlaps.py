@@ -1,42 +1,47 @@
 import json
 import argparse
+from config import get_config
 
-parser = argparse.ArgumentParser()
-parser.add_argument("json_file", type=str)
-args = parser.parse_args()
+config = get_config()
 
-with open(args.json_file, "r") as f:
-    data = json.load(f)
+def overlaps(json_file_path):
+    with open(json_file_path, "r") as f:
+        data = json.load(f)
 
-if isinstance(data, dict):
-    data = list(data.values())
+    if isinstance(data, dict):
+        data = list(data.values())
 
-stations = 38
-row_height = 1
-obj_spacing = 700
-slot_width = 50
-max_x = len(data) * obj_spacing
+    stations = config["stations"]
+    row_height = 1
+    obj_spacing = config["takt"]
+    slot_width = config["drift"]
+    max_x = len(data) * obj_spacing
 
-overlap_count = 0
-placed_rects = {y: [] for y in range(stations)}
+    overlap_count = 0
+    placed_rects = {y: [] for y in range(stations)}
 
-for obj_idx, obj in enumerate(data):
-    start_x = obj_idx * obj_spacing
+    for obj_idx, obj in enumerate(data):
+        start_x = obj_idx * obj_spacing
 
-    for station_key, value in obj["data"].items():
-        y = int(station_key[1:]) - 1
-        offset_x = obj["offsets"].get(station_key, 0)
+        for station_key, value in obj["data"].items():
+            y = int(station_key[1:]) - 1
+            offset_x = obj["offsets"].get(station_key, 0)
 
-        # Each object’s x range
-        x_start = start_x + offset_x
-        x_end = x_start + value
+            x_start = start_x + offset_x
+            x_end = x_start + value
 
-        # Compare with all previously placed rectangles at this station
-        for prev_start, prev_end in placed_rects[y]:
-            if x_start < prev_end and x_end > prev_start:
-                overlap_count += 1
+            for prev_start, prev_end in placed_rects[y]:
+                if x_start < prev_end and x_end > prev_start:
+                    overlap_count += 1
 
-        # Record this rectangle so future ones can check against it
-        placed_rects[y].append((x_start, x_end))
+            placed_rects[y].append((x_start, x_end))
 
-print(f"Total overlaps detected: {overlap_count}")
+    return overlap_count
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("json_file", type=str)
+    args = parser.parse_args()
+
+    count = overlaps(args.json_file)
+    print(f"{count}")

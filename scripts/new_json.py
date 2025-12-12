@@ -1,12 +1,17 @@
 import random
 import json
 from pathlib import Path
+from config import get_config
 
-takt =  700
-drift_area = 200
-gap = 20
-objects = 10
-stations = 5
+config = get_config()
+
+objects = config["objects"]
+stations = config["stations"]
+
+takt = config["takt"] 
+drift_area = config["drift"]
+gap = config["gap"]
+
 seed = 1337      
 
 min_size = 300

@@ -6,9 +6,9 @@ from torch.utils.data import DataLoader
 from pathlib import Path
 from tqdm import tqdm
 
-from model import build_transformer
-from dataset import Dataset
-from config import get_config
+from ML.Transformer.model import build_transformer
+from ML.Transformer.dataset import Dataset
+from ML.Transformer.config import get_config
 
 config = get_config()
 
@@ -48,11 +48,16 @@ def predict_score(model, sample_tensor, device):
         return logits.mean().item()
 
 
-def main():
+def run_transformer(run_path):
     # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     device = torch.device("cpu")
+    
+    if(run_path is not None):
+        path = run_path
+    else:
+        path = config["run_path"]
 
-    with open(config["run_path"], "r") as f:
+    with open(path, "r") as f:
         raw_json = json.load(f)
 
     dataset = Dataset(config["run_path"], train_frac=1.0)
@@ -68,10 +73,13 @@ def main():
 
     rearranged = [raw_json[i] for i in permuted_indices]
 
+    if path is not config["run_path"]:
+        return rearranged
+    
     with open(config["output_json"], "w") as f:
         json.dump(rearranged, f, indent=4)
 
     print(f"Predictions saved to {config['output_json']}")
 
 
-main()
+run_transformer(None)

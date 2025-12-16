@@ -3,3 +3,5 @@ tqdm
 tensorboard
 matplotlib
 PyQt5
+flask
+flask-restful

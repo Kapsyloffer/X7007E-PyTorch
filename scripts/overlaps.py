@@ -1,6 +1,6 @@
 import json
 import argparse
-from config import get_config
+from scripts.config import get_config
 
 config = get_config()
 

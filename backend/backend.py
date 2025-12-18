@@ -28,11 +28,22 @@ def check():
     
     return jsonify({"overlap_count": result})
 
+# /run/transformer/<int> -> [förslag] (len = <int>)
 @app.route("/run/transformer", methods=["POST"])
 def api_run_transformer():
     data = request.get_json()
     path = temp_path(data)
     return run_transformer(path)
+
+@app.route("/run/transformer/<int:nm>", methods=["POST"])
+def api_run_transformers(nm):
+    data = request.get_json()
+    path = temp_path(data)
+    förslag = []
+    for x in range(0, nm):
+        förslag.append(run_transformer(path))
+    return förslag
+
 
 @app.route("/run/pointernetwork", methods=["POST"])
 def api_run_pointernetwork():

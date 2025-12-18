@@ -61,40 +61,21 @@ class Allocation:
         desired_size = random.randint(min_size, max_size)
         new_size = min(desired_size, available_space)
         new_size = max(min_size, new_size) 
-       
-        offset_left = slot_left - self.T * takt 
-        offset_right = takt + drift_area - offset_left - new_size
-        offset = offset_left + (offset_right / 2) #utilize space between
-
-        self.offset = max(-drift_area, min(offset, drift_area)) # -d < offset < d
+      
+        self.offset = self.offset_calc(slot_left, slot_right, new_size)
         
         self.size = new_size
 
         allocations[self.T][self.S] = self
 
+    def offset_calc(self, slot_left, slot_right, new_size):
+        offset_left = slot_left - self.T * takt 
+        offset_right = takt + drift_area - offset_left - new_size
+        offset = offset_left + (offset_right / 2) #utilize space between
 
-def calc_offset(T, S, size):
-    prevT_right = 0
-    prevS_right = 0
+        return max(-drift_area, min(offset, drift_area)) # -d < offset < d
 
-    limit_left = T * takt - drift_area
-    limit_right = (T + 1) * takt + drift_area
 
-    if T > 0 and allocations[T - 1][S] is not None:
-        prevS_right = allocations[T - 1][S].get_global_pos()[1]
-    if allocations[T][S].get_prev() is not None:
-        prevT_right = allocations[T][S].get_prev().get_global_pos()[1]
-
-    slot_left = max(limit_left, max(prevT_right, prevS_right)) 
-    slot_right = limit_right
-
-    offset_left = slot_left - self.T * takt 
-    offset_right = takt + drift_area - offset_left - new_size
-    offset = offset_left + (offset_right / 2) #utilize space between
-
-    offset = max(-drift_area, min(offset, drift_area)) # -d < offset < d
-
-    return offset
 
 def generate_json(name, shuffled):
     prev_list = []

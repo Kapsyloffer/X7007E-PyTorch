@@ -6,9 +6,9 @@ from torch.utils.data import DataLoader
 from pathlib import Path
 from tqdm import tqdm
 
-from model import build_transformer
-from dataset import Dataset 
-from config import get_config
+from ML.Transformer.model import build_transformer
+from ML.Transformer.dataset import Dataset 
+from ML.Transformer.config import get_config
 import random
 
 config = get_config()

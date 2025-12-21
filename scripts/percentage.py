@@ -1,5 +1,5 @@
 import json
-from overlaps import overlaps
+from scripts.overlaps import overlaps
 
 def percentage():
     predicted = "jsons/predicted.json"

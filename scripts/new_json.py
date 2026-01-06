@@ -8,7 +8,7 @@ config = get_config()
 objects = config["objects"]
 stations = config["stations"]
 
-takt = config["takt"] 
+takt = config["takt"]
 drift_area = config["drift"]
 gap = config["gap"]
 

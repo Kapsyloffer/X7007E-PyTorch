@@ -1,8 +1,11 @@
 import sys
 import os
 import json
+from config import get_config
 
-takt_time = 700 #cmin
+CONFIG = get_config()
+takt_time = CONFIG["takt"] 
+drift_limit = CONFIG["drift"]
 allocations = []
 
 class Allocation:
@@ -32,25 +35,18 @@ def load_and_process_allocations(input_file):
         json_data = json.load(f)
 
     for entry in json_data:
-        # Extract object-level data
         chassi = entry.get("object")
-        # Use id if present, otherwise default to object (sequence)
         timeslot = entry.get("id", chassi)
         
-        # Period is required by Allocation class but missing from the JSON snippet
-        # Defaulting to "Unknown" or checking if key exists
-        period = entry.get("period", "Unknown") 
+        period = 1 # entry.get("period", "Unknown") 
         
         data_dict = entry.get("data", {})
         
-        # Ensure offsets dict exists to save results
         if "offsets" not in entry:
             entry["offsets"] = {}
 
-        # Iterate through the stations in the data dictionary
         for station_key, size_value in data_dict.items():
             
-            # Key format is "s1", "s2", etc. Extract integer station number.
             if station_key.startswith("s"):
                 try:
                     station_number = int(station_key.replace("s", ""))
@@ -59,14 +55,10 @@ def load_and_process_allocations(input_file):
             else:
                 continue
 
-            # Calculate offset using olov_offset instead of reading from JSON
             offset_value = olov_offset(int(timeslot), station_number, float(size_value))
             
-            # Save calculated offset back to the JSON structure
             entry["offsets"][station_key] = offset_value
 
-            # Create the Allocation object
-            # Structure: period, chassi, timeslot, station, size, offset
             alloc = Allocation(
                 period, 
                 int(chassi), 
@@ -102,12 +94,16 @@ def olov_offset(seq_num, station, size):
     #d = max[0, max[d(c, s-1), d(c-1,s)] + t(c, s) - T]
     (n_l, n_r) = find_neighbours_left(seq_num, station)
     print("\nolov data:", n_l, n_r, T)
-    d = max(0, max(n_l, n_r))
+    
+    # Updated to allow negative drift (starting early) down to -drift_limit
+    d = max(-drift_limit, max(n_l, n_r))
+    d = min(d, drift_limit)
     # print("new offset: ", d)
     return int(d)
 
 def find_neighbours_left(seq_num, station):
-    (neighbours_left, neighbours_right) = (-50, -50)
+    # Initialize lower than drift limit to ensure valid comparisons
+    (neighbours_left, neighbours_right) = (-drift_limit - 50, -drift_limit - 50)
     for x in allocations:
         (seq, stn) = x.get_coords()
         if seq == seq_num and stn == station-1:

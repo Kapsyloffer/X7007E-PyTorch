@@ -7,19 +7,17 @@ config = get_config()
 
 objects = config["objects"]
 stations = config["stations"]
-
 takt = config["takt"]
 drift_area = config["drift"]
 gap = config["gap"]
 
-seed = 1337      
-
+seed = 1337       
 min_size = 300
 max_size = takt + 2 * drift_area
 
+# Initialize Global State
 random.seed(seed)
-
-allocations = [[None for _ in range(stations + objects)] for _ in range(stations + objects)]
+allocations = [[None for _ in range(stations + objects + 100)] for _ in range(stations + objects + 100)]
 
 def global_pos(T, size, offset):
     start = T * takt + offset
@@ -37,9 +35,6 @@ class Allocation:
     def get_global_pos(self):
         return global_pos(self.T, self.size, self.offset)
 
-    def get_prev(self):
-        return prev
-
     def gen(self):
         prevT_right = 0
         prevS_right = 0
@@ -52,7 +47,6 @@ class Allocation:
         if self.prev is not None:
             prevT_right = self.prev.get_global_pos()[1]
 
-        
         prev_left = max(prevT_right, prevS_right) 
         slot_left = max(prev_left, limit_left) + gap
         slot_right = limit_right - gap
@@ -63,7 +57,6 @@ class Allocation:
         new_size = max(min_size, new_size) 
       
         self.offset = self.offset_calc(slot_left, slot_right, new_size)
-        
         self.size = new_size
 
         allocations[self.T][self.S] = self
@@ -71,15 +64,15 @@ class Allocation:
     def offset_calc(self, slot_left, slot_right, new_size):
         offset_left = slot_left - self.T * takt 
         offset_right = takt + drift_area - offset_left - new_size
-        offset = offset_left + (offset_right / 2) #utilize space between
+        offset = offset_left + (offset_right / 2) 
+        return max(-drift_area, min(offset, drift_area))
 
-        return max(-drift_area, min(offset, drift_area)) # -d < offset < d
+# --- GENERATION LOGIC ---
 
-
-
-def generate_json(name, shuffled):
+def run_generation():
     prev_list = []
 
+    print("Generating data...")
     for i in range(0, objects):
         prev = None
         for j in range(stations):
@@ -92,20 +85,18 @@ def generate_json(name, shuffled):
             if j == stations - 1:
                 prev_list.append(prev)
 
+    # Helper recursive function
     def traverse_prev_recursive(alloc, idx=1, data=None, offsets=None):
-        if data is None:
-            data = {}
-        if offsets is None:
-            offsets = {}
-
+        if data is None: data = {}
+        if offsets is None: offsets = {}
         if alloc.prev is not None:
             idx = traverse_prev_recursive(alloc.prev, idx, data, offsets)
-
         key = f"s{idx}"
         data[key] = int(alloc.size)
         offsets[key] = int(alloc.offset)
         return idx + 1  
 
+    # Helper chain function
     def chain_to_json_recursive(last_alloc, chain_id):
         data = {}
         offsets = {}
@@ -116,23 +107,30 @@ def generate_json(name, shuffled):
             "offsets": offsets
         }
 
-    json_output = []
+    # 1. Build the Master List
+    master_json = []
     for chain_id, last_alloc in enumerate(prev_list, start=1):
         json_entry = chain_to_json_recursive(last_alloc, chain_id)
-        json_output.append(json_entry)
-    
-    if shuffled:
-        random.shuffle(json_output)
-        for new_id, entry in enumerate(json_output, start=1):
-            entry["id"] = new_id 
-   
+        master_json.append(json_entry)
+
     Path("jsons").mkdir(parents=True, exist_ok=True)  
-    with open(f"jsons/{name}.json", "w") as f:
-        json.dump(json_output, f, indent=4)
 
-    # print(f"Sample from {name}:")
-    # print(json.dumps(json_output[0], indent=4))
+    # 2. Save allocations.json (The Original)
+    print("Saving jsons/allocations.json...")
+    with open("jsons/allocations.json", "w") as f:
+        json.dump(master_json, f, indent=4)
 
+    # 3. Create a Copy, Shuffle it, and Save (The Puzzle)
+    # We use a copy so we don't mess up the original list order in memory if we needed it later
+    shuffled_json = master_json.copy()
+    
+    # We shuffle the list, but we DO NOT touch the IDs or Data inside.
+    # Object 1 remains Object 1, even if it is now at index 99.
+    random.shuffle(shuffled_json)
 
-generate_json("allocations", False)
-generate_json("shuffled", True)
+    print("Saving jsons/shuffled.json...")
+    with open("jsons/shuffled.json", "w") as f:
+        json.dump(shuffled_json, f, indent=4)
+
+if __name__ == "__main__":
+    run_generation()

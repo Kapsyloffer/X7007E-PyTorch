@@ -5,10 +5,14 @@ def get_config():
         "training_path": "jsons/allocations.json",
         "run_path": "jsons/shuffled.json",
         "output_json": "jsons/predicted.json",
-        "batch_size": 8,
-        "num_epochs": 10,
-        "d_model": 256,
-        "lr": 1e-6,
-        "alpha": 0.2,
-        "model_folder": "ML/weights",
+        "batch_size": 16,
+        "num_epochs": 100,
+        "lr": 1e-4,
+        
+        # Model Architecture
+        "input_dim": 35,      # 35 Station Sizes (TODO: LINK TO OTHER CONFIG)
+        "hidden_dim": 512,    # LSTM Memory size
+        "d_model": 256,       # Embedding size 
+        
+        "model_folder": "ML/weights_ptr",
     }

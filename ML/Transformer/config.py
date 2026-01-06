@@ -6,9 +6,9 @@ def get_config():
         "run_path": "jsons/shuffled.json",
         "output_json": "jsons/predicted.json",
         "batch_size": 8,
-        "num_epochs": 10,
-        "d_model": 256,
+        "num_epochs": 100,
+        "d_model": 512, 
         "lr": 1e-6,
-        "alpha": 0.2,
+        "dropout": 0.3, 
         "model_folder": "ML/weights",
     }

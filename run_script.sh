@@ -1,4 +1,3 @@
-source .env/bin/activate
 python scripts/new_json.py
 cp jsons/shuffled.json jsons/predicted.json
 python -m scripts.percentage

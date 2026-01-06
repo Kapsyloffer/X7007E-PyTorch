@@ -2,8 +2,11 @@ import csv
 import json
 import sys
 import os
+from config import get_config
 
-takt_time = 700 #cmin
+config = get_config()
+
+takt_time = config["takt"]
 allocations = []
 
 class Allocation:

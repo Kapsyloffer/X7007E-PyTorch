@@ -2,10 +2,10 @@ from pathlib import Path
 
 def get_config():
     return {
-        "objects": 2000,
+        "objects": 100,
         "stations": 35,
         "takt": 700,
-        "drift": 100,
+        "drift": 200,
         "gap": 10,
     }
 

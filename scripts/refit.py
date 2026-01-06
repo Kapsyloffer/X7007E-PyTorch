@@ -2,6 +2,7 @@ import sys
 import os
 import json
 from config import get_config
+from tqdm import tqdm
 
 CONFIG = get_config()
 takt_time = CONFIG["takt"] 
@@ -19,7 +20,7 @@ class Allocation:
 
     def get_coords(self):
         return (self.timeslot, self.station)
-    
+     
     def get_data(self):
         return (self.size, self.offset)
 
@@ -34,7 +35,8 @@ def load_and_process_allocations(input_file):
     with open(input_file, 'r') as f:
         json_data = json.load(f)
 
-    for entry in json_data:
+    # Wrapped json_data in tqdm for the progress bar
+    for entry in tqdm(json_data, desc="Processing Allocations", unit="timeslots"):
         chassi = entry.get("object")
         timeslot = entry.get("id", chassi)
         
@@ -93,7 +95,8 @@ def olov_offset(seq_num, station, size):
          return 0
     #d = max[0, max[d(c, s-1), d(c-1,s)] + t(c, s) - T]
     (n_l, n_r) = find_neighbours_left(seq_num, station)
-    print("\nolov data:", n_l, n_r, T)
+    # Commented out print to prevent breaking the progress bar layout
+    # print("\nolov data:", n_l, n_r, T)
     
     # Updated to allow negative drift (starting early) down to -drift_limit
     d = max(-drift_limit, max(n_l, n_r))

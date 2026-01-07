@@ -55,7 +55,7 @@ def load_object_map(file_path):
 
 def verify_integrity():
     files = [
-        "jsons/allocations.json",
+        #"jsons/allocations.json",
         "jsons/shuffled.json",
         "jsons/predicted.json"
     ]
@@ -78,10 +78,10 @@ def verify_integrity():
         extra = compare_ids - base_ids
 
         if missing:
-            print(f"   ❌ Missing Object IDs in {compare_file}: {missing}")
+            # print(f"   ❌ Missing Object IDs in {compare_file}: {missing}")
             all_good = False
         if extra:
-            print(f"   ❌ Extra Object IDs in {compare_file}: {extra}")
+            # print(f"   ❌ Extra Object IDs in {compare_file}: {extra}")
             all_good = False
 
         if missing or extra:
@@ -99,8 +99,9 @@ def verify_integrity():
             if not is_same:
                 data_mismatches += 1
                 if data_mismatches <= 5: 
-                    print(f"   ❌ Data mismatch for Object '{obj_id}':")
-                    print(f"      Reason: {reason}")
+                    continue
+                    # print(f"   ❌ Data mismatch for Object '{obj_id}':")
+                    # print(f"      Reason: {reason}")
         
         if data_mismatches != 0:
             all_good = False

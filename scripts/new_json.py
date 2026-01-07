@@ -11,18 +11,11 @@ takt = config["takt"]
 drift_area = config["drift"]
 gap = config["gap"]
 
-seed = 1337       
+seed = 1337
 min_size = 300
 max_size = takt + 2 * drift_area
 
-# Initialize Global State
-random.seed(seed)
-allocations = [[None for _ in range(stations + objects + 100)] for _ in range(stations + objects + 100)]
-
-def global_pos(T, size, offset):
-    start = T * takt + offset
-    end = start + size
-    return [start, end]
+TRAINING_MULTIPLIER = 50
 
 class Allocation:
     def __init__(self, T, S, size=takt, offset=0, prev=None):
@@ -33,17 +26,20 @@ class Allocation:
         self.prev = prev
     
     def get_global_pos(self):
-        return global_pos(self.T, self.size, self.offset)
+        start = self.T * takt + self.offset
+        end = start + self.size
+        return [start, end]
 
-    def gen(self):
+    def gen(self, allocation_grid):
         prevT_right = 0
         prevS_right = 0
 
         limit_left = self.T * takt - drift_area
         limit_right = (self.T + 1) * takt + drift_area
 
-        if self.T > 0 and allocations[self.T - 1][self.S] is not None:
-            prevS_right = allocations[self.T - 1][self.S].get_global_pos()[1]
+        if self.T > 0 and allocation_grid[self.T - 1][self.S] is not None:
+            prevS_right = allocation_grid[self.T - 1][self.S].get_global_pos()[1]
+        
         if self.prev is not None:
             prevT_right = self.prev.get_global_pos()[1]
 
@@ -59,7 +55,7 @@ class Allocation:
         self.offset = self.offset_calc(slot_left, slot_right, new_size)
         self.size = new_size
 
-        allocations[self.T][self.S] = self
+        allocation_grid[self.T][self.S] = self
 
     def offset_calc(self, slot_left, slot_right, new_size):
         offset_left = slot_left - self.T * takt 
@@ -67,20 +63,21 @@ class Allocation:
         offset = offset_left + (offset_right / 2) 
         return max(-drift_area, min(offset, drift_area))
 
-# --- GENERATION LOGIC ---
 
-def run_generation():
+def generate_sequence(num_objects, start_id=1):
+    max_t = num_objects + stations + 100
+    grid_w = stations + 10
+    allocation_grid = [[None for _ in range(grid_w)] for _ in range(max_t)]
+    
     prev_list = []
 
-    print("Generating data...")
-    for i in range(0, objects):
+    for i in range(0, num_objects):
         prev = None
         for j in range(stations):
             T = i + j + 1
             S = j + 1
             alloc = Allocation(T, S, takt, 0, prev)
-            alloc.gen()
-            allocations[T][S] = alloc  
+            alloc.gen(allocation_grid)  
             prev = alloc
             if j == stations - 1:
                 prev_list.append(prev)
@@ -107,30 +104,35 @@ def run_generation():
             "offsets": offsets
         }
 
-    # 1. Build the Master List
-    master_json = []
-    for chain_id, last_alloc in enumerate(prev_list, start=1):
+    json_output = []
+    for i, last_alloc in enumerate(prev_list):
+        chain_id = start_id + i 
         json_entry = chain_to_json_recursive(last_alloc, chain_id)
-        master_json.append(json_entry)
+        json_output.append(json_entry)
+        
+    return json_output
 
+def run_generation():
+    random.seed(seed)
     Path("jsons").mkdir(parents=True, exist_ok=True)  
 
-    # 2. Save allocations.json (The Original)
+    training_data = generate_sequence(objects * TRAINING_MULTIPLIER, start_id=1)
+
     print("Saving jsons/allocations.json...")
     with open("jsons/allocations.json", "w") as f:
-        json.dump(master_json, f, indent=4)
+        json.dump(training_data, f, indent=4)
 
-    # 3. Create a Copy, Shuffle it, and Save (The Puzzle)
-    # We use a copy so we don't mess up the original list order in memory if we needed it later
-    shuffled_json = master_json.copy()
+    print(f"Generating Test Data ({objects} items)...")
+    test_data = generate_sequence(objects, start_id=(objects * TRAINING_MULTIPLIER) + 1)
     
-    # We shuffle the list, but we DO NOT touch the IDs or Data inside.
-    # Object 1 remains Object 1, even if it is now at index 99.
-    random.shuffle(shuffled_json)
+    # Shuffle the test data to create the puzzle
+    random.shuffle(test_data)
 
     print("Saving jsons/shuffled.json...")
     with open("jsons/shuffled.json", "w") as f:
-        json.dump(shuffled_json, f, indent=4)
+        json.dump(test_data, f, indent=4)
+        
+    print(f"Done. Train: {len(training_data)} items. Test: {len(test_data)} items.")
 
 if __name__ == "__main__":
     run_generation()

@@ -44,6 +44,29 @@ def api_run_transformers(nm):
         förslag.append(run_transformer(path))
     return förslag
 
+@app.route("/jumpin/<str:obj>", methods=["POST"])
+def api_jumpin(json, idx, obj): # JSON, target index, object
+    data = request.get_json()
+    path = temp_path(data)
+    return "TODO"
+
+@app.route("/jumpout/<str:obj>", methods=["POST"])
+def api_jumpout(json, idx, obj): # JSON, target index, object
+    data = request.get_json()
+    path = temp_path(data)
+    return "TODO"
+
+# (KLIENT/LOCALSTORAGE) 1. Endpoint för ändringar i sekvensen. (Splitta Update till Uppdatera operatörer på en station, eller lägg till runners, eller flytta ordningen på produkter i sekvensen)
+#
+# 2. Endpoint för borttagning i sekvensen.
+# 3. Endpoint för tilläggning av ordrar i sekvensen.
+#
+# (OPTIONAL) 4. Lagra sekvenser. (Endpoint för save, update, delete sequence)
+#
+# 5. Endpoint för att föreslå bättre* sekvenser baserat på data.
+# * Definieras med färre violations.
+
+
 
 @app.route("/run/pointernetwork", methods=["POST"])
 def api_run_pointernetwork():

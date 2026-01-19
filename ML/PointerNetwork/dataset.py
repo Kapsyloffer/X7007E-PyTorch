@@ -23,9 +23,12 @@ class PointerDataset(TorchDataset):
         return self.multiplier * 1
 
     def __getitem__(self, idx):
-        # Curriculum: Train on random sub-sequence lengths (20 to Max)
-        # This prevents the model from overfitting to a fixed length
-        current_len = random.randint(20, self.num_items)
+        # Curriculum: Train on random sub-sequence lengths
+        # FIX: Start EASY (5-15) instead of 20-50.
+        # This forces the model to learn the *logic* of sorting/pointing
+        # rather than just getting confused by massive sequences.
+        max_len = min(self.num_items, 15)
+        current_len = random.randint(5, max_len)
         
         # 1. Pick random subset
         subset_indices = sorted(random.sample(range(self.num_items), current_len))

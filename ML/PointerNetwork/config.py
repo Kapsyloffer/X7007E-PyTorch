@@ -5,8 +5,8 @@ def get_config():
         "training_path": "jsons/allocations.json",
         "run_path": "jsons/shuffled.json",
         "output_json": "jsons/predicted.json",
-        "batch_size": 16,
-        "num_epochs": 100,
+        "batch_size": 128,
+        "num_epochs": 10,
         "lr": 1e-4,
         
         # Model Architecture

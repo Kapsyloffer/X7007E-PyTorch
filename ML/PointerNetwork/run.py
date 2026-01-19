@@ -13,6 +13,14 @@ from config import get_config
 config = get_config()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+def calculate_offsets_greedy(sorted_items):
+    current_offset = 0.0
+    for item in sorted_items:
+        item["predicted_offset"] = current_offset
+        width = sum(item["data"].values())
+        current_offset += width
+    return sorted_items
+
 def run_pointer():
     input_path = config["run_path"]
     
@@ -51,8 +59,10 @@ def run_pointer():
         
     sorted_data = [clean_json[i] for i in sort_indices]
     
+    final_data = calculate_offsets_greedy(sorted_data)
+    
     with open(config["output_json"], "w") as f:
-        json.dump(sorted_data, f, indent=4)
+        json.dump(final_data, f, indent=4)
         
     print(f"Saved to {config['output_json']}")
 

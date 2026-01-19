@@ -63,7 +63,8 @@ class PointerNetwork(nn.Module):
         scores = scores / math.sqrt(self.hidden_dim)
         
         if mask is not None:
-            scores.masked_fill_(mask, -1e9)
+            # Use -1e4 for float16 stability
+            scores.masked_fill_(mask, -1e4)
             
         probs = F.softmax(scores, dim=1)
         return scores, probs
@@ -72,7 +73,14 @@ class PointerNetwork(nn.Module):
         batch_size, seq_len, _ = x.size()
         
         embedded = self.projector(x)
-        encoder_outputs, (hidden, cell) = self.encoder(embedded)
+        
+        # FIX: The "Nuclear Option" for cuDNN errors.
+        # This forces LSTM weights to be contiguous in memory, 
+        # which fixes CUDNN_STATUS_NOT_SUPPORTED.
+        self.encoder.flatten_parameters()
+        
+        # Ensure input is also contiguous
+        encoder_outputs, (hidden, cell) = self.encoder(embedded.contiguous())
         
         # Bridge
         hidden_cat = torch.cat([hidden[0], hidden[1]], dim=1)
@@ -90,30 +98,19 @@ class PointerNetwork(nn.Module):
         for t in range(seq_len):
             dec_hidden, dec_cell = self.decoder_cell(decoder_input, (dec_hidden, dec_cell))
             
-            # Glimpse step   
-            _, glimpse_probs = self.attention(
+            # --- OPTIMIZED ATTENTION BLOCK ---
+            
+            # 1. Glimpse Attention (Calculated ONCE)
+            glimpse_scores, glimpse_probs = self.attention(
                 dec_hidden, encoder_outputs, 
                 self.glimpse_W1, self.glimpse_W2, self.glimpse_v, 
                 mask=mask
             )
             
-            # glimpse_probs: [Batch, SeqLen] -> [Batch, 1, SeqLen]
-            # encoder_outputs: [Batch, SeqLen, 2*Hidden] context: [Batch, 1, 2*Hidden] -> squeeze -> [Batch, 2*Hidden]
+            # Context calculation
             context = torch.bmm(glimpse_probs.unsqueeze(1), encoder_outputs).squeeze(1)
             
-            # Perform a second attention pass and fuse scores to refine the final pointer decision.
-            scores, probs = self.attention(
-                dec_hidden, encoder_outputs, 
-                self.ptr_W1, self.ptr_W2, self.ptr_v, 
-                mask=mask
-            )
-            
-            glimpse_scores, _ = self.attention(
-                dec_hidden, encoder_outputs, 
-                self.glimpse_W1, self.glimpse_W2, self.glimpse_v, 
-                mask=mask
-            )
-            
+            # 2. Pointer Attention (Calculated ONCE)
             ptr_scores, _ = self.attention(
                 dec_hidden, encoder_outputs, 
                 self.ptr_W1, self.ptr_W2, self.ptr_v, 
@@ -122,6 +119,8 @@ class PointerNetwork(nn.Module):
             
             # Fused Scores
             final_scores = glimpse_scores + ptr_scores
+            
+            # ---------------------------------
             
             logits_list.append(final_scores)
             
@@ -136,6 +135,7 @@ class PointerNetwork(nn.Module):
                 selected = predicted_idx
 
             safe_selected = selected.clone()
+            # Handle padding (-1) indices if present in targets
             safe_selected[selected < 0] = 0
                 
             chosen_one_hot = torch.zeros_like(final_scores, dtype=torch.bool)

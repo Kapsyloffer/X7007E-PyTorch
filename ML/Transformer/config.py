@@ -5,10 +5,11 @@ def get_config():
         "training_path": "jsons/allocations.json",
         "run_path": "jsons/shuffled.json",
         "output_json": "jsons/predicted.json",
-        "batch_size": 8,
+        "batch_size": 16,
         "num_epochs": 10,
+        "lr": 1e-3,
+
         "d_model": 512, 
-        "lr": 1e-6,
         "dropout": 0.1, 
         "model_folder": "ML/weights",
     }

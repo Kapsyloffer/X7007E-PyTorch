@@ -15,7 +15,7 @@ seed = 1337
 min_size = 300
 max_size = takt + 2 * drift_area
 
-TRAINING_MULTIPLIER = 50
+TRAINING_MULTIPLIER = config["training_multiplier"] 
 
 class Allocation:
     def __init__(self, T, S, size=takt, offset=0, prev=None):
@@ -116,8 +116,16 @@ def run_generation():
     random.seed(seed)
     Path("jsons").mkdir(parents=True, exist_ok=True)  
 
+    # 1. Generate the massive training list
     training_data = generate_sequence(objects * TRAINING_MULTIPLIER, start_id=1)
 
+    # 2. Extract a small chunk (100 items) for Overfitting Tests
+    print("Saving jsons/overfitting_test.json (First 100 items)...")
+    overfitting_chunk = training_data[:100]
+    with open("jsons/overfitting_test.json", "w") as f:
+        json.dump(overfitting_chunk, f, indent=4)
+
+    # 3. Save the full dataset
     print("Saving jsons/allocations.json...")
     with open("jsons/allocations.json", "w") as f:
         json.dump(training_data, f, indent=4)

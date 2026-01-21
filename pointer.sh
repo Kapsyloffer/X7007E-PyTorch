@@ -1,5 +1,5 @@
-rm -rf ML/weights_ptr
-python scripts/new_json.py 
+ python scripts/new_json.py 
+# python -m scripts.overlaps jsons/allocations.json
 python ML/PointerNetwork/train.py
 python ML/PointerNetwork/run.py
 python -m scripts.percentage

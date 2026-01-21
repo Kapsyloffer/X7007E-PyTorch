@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 import math
 
 # if str(Path(__file__).resolve().parent.parent.parent) not in sys.path:
-#     sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
+#      sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
 from scripts.config import get_config as alloc_con
 from ML.Transformer.model import build_transformer
@@ -71,18 +71,22 @@ def combined_loss(predictions: torch.Tensor, targets: torch.Tensor, alpha_factor
     
     return l1_loss + (alpha_factor * conflict_loss)
 
-def validate(model, val_data, val_targets, alpha_factor):
+def validate(model, val_loader, alpha_factor):
     model.eval()
+    total_val_loss = 0
     with torch.no_grad():
-        src = val_data.to(device)
-        tgt = val_targets.to(device) 
-        
-        # Encoder-Only Validation
-        enc_out = model.encode(src, src_mask=None)
-        output = model.project(enc_out) 
-        val_loss = combined_loss(output, tgt, alpha_factor)
+        for batch_src, batch_tgt in val_loader:
+            src = batch_src.to(device)
+            tgt = batch_tgt.to(device) 
+            
+            # Encoder-Only Validation
+            enc_out = model.encode(src, src_mask=None)
+            output = model.project(enc_out) 
+            val_loss = combined_loss(output, tgt, alpha_factor)
+            total_val_loss += val_loss.item()
+            
     model.train()
-    return val_loss.item()
+    return total_val_loss / len(val_loader)
 
 def Train():
     model, dataset = load_model(config)
@@ -91,8 +95,9 @@ def Train():
     train_loader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=True, collate_fn=dataset.collate_fn)
     
     val_data_raw, val_targets_raw = dataset.get_val_data()
-    val_data = torch.stack(val_data_raw)
-    val_targets = torch.stack(val_targets_raw)
+    # Using a DataLoader for validation to prevent OOM
+    val_dataset = torch.utils.data.TensorDataset(torch.stack(val_data_raw), torch.stack(val_targets_raw))
+    val_loader = DataLoader(val_dataset, batch_size=config["batch_size"], shuffle=False)
 
     accumulation_steps = 4 
 
@@ -142,20 +147,20 @@ def Train():
             iterator.set_postfix({"loss": f"{loss.item() * accumulation_steps:.4f}"})
 
         avg_loss = total_loss / len(train_loader)
-        current_val_loss = validate(model, val_data, val_targets, alpha_factor)
+        current_val_loss = validate(model, val_loader, alpha_factor)
         
         print(f"Epoch: {epoch+1} | Train Loss: {avg_loss:.6f} | Val Loss: {current_val_loss:.6f}")
 
         # if current_val_loss < best_val_loss:
-        #     best_val_loss = current_val_loss
-        #     trigger_times = 0
-        #     torch.save(model.state_dict(), model_folder / "best_model.pt")
+        #      best_val_loss = current_val_loss
+        #      trigger_times = 0
+        #      torch.save(model.state_dict(), model_folder / "best_model.pt")
         # else:
-        #     trigger_times += 1
-        #     print(trigger_times, "/", patience)
-        #     if trigger_times >= patience:
-        #         print(f"Early stopping at epoch {epoch+1}")
-        #         break
+        #      trigger_times += 1
+        #      print(trigger_times, "/", patience)
+        #      if trigger_times >= patience:
+        #          print(f"Early stopping at epoch {epoch+1}")
+        #          break
     
     print(f"Best Model saved to {model_folder / 'best_model.pt'}")
 

@@ -1,81 +1,62 @@
 import torch
 import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import DataLoader
-from torch.amp import GradScaler, autocast
+import os
+import sys
 from pathlib import Path
 from tqdm import tqdm
-import sys
+from torch.utils.data import DataLoader
 
 if str(Path(__file__).resolve().parent.parent.parent) not in sys.path:
-    sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
+     sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
-from model import PointerNetwork
-from dataset import PointerDataset
-from config import get_config
+from ML.PointerNetwork.model import PointerNetwork
+from ML.PointerNetwork.dataset import PointerDataset
+from ML.PointerNetwork.config import get_config
+
+os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 
 config = get_config()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-Path(config["model_folder"]).mkdir(parents=True, exist_ok=True)
 
-def train():
-    
-    # Gradient Accumulation Steps
-    ACCUM_STEPS = 16
-    batch_size = max(1, config["batch_size"] // ACCUM_STEPS)
-
-    dataset = PointerDataset(config["training_path"], epoch_multiplier=200)
-    dataloader = DataLoader(dataset, batch_size=batch_size, collate_fn=dataset.collate_fn)
+def Train():
+    dataset = PointerDataset(config["training_path"])
+    batch_size = min(config["batch_size"], len(dataset))
+    train_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, collate_fn=dataset.collate_fn)
     
     model = PointerNetwork(
-        input_dim=config["input_dim"], 
+        input_dim=config["input_dim"],
         hidden_dim=config["hidden_dim"],
-        d_model=config.get("d_model", 256)
+        d_model=config["d_model"]
     ).to(device)
-    
-    optimizer = optim.Adam(model.parameters(), lr=1e-4)
-    criterion = nn.CrossEntropyLoss(ignore_index=-1)
-    scaler = GradScaler('cuda')
-    
-    best_loss = float('inf')
 
-    torch.cuda.empty_cache()
+    optimizer = torch.optim.AdamW(model.parameters(), lr=config["lr"], weight_decay=1e-2)
+    criterion = nn.CrossEntropyLoss()
+    
+    model_folder = Path(config["model_folder"])
+    model_folder.mkdir(parents=True, exist_ok=True)
 
+    model.train()
     for epoch in range(config["num_epochs"]):
-        model.train()
         total_loss = 0
-        optimizer.zero_grad()
+        iterator = tqdm(train_loader, desc=f"Epoch {epoch+1}/{config['num_epochs']}")
         
-        iterator = tqdm(dataloader, desc=f"Epoch {epoch+1}/{config['num_epochs']}")
-        
-        for i, (inputs, targets) in enumerate(iterator):
-            inputs, targets = inputs.to(device), targets.to(device)
-            
-            # Forward
-            with autocast('cuda'):
-                logits, _ = model(inputs, targets)
-                # Flatten
-                loss = criterion(logits.view(-1, logits.size(-1)), targets.view(-1))
-                loss = loss / ACCUM_STEPS
-            
-            scaler.scale(loss).backward()
+        for batch_samples, batch_targets in iterator:
+            batch_samples = batch_samples.to(device)
+            batch_targets = batch_targets.to(device)
 
-            if (i + 1) % ACCUM_STEPS == 0:
-                scaler.unscale_(optimizer)
-                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-                scaler.step(optimizer)
-                scaler.update()
-                optimizer.zero_grad()
+            logits, _ = model(batch_samples, targets=batch_targets)
+            loss = criterion(logits.view(-1, logits.size(-1)), batch_targets.view(-1))
             
-            total_loss += loss.item() * ACCUM_STEPS
-            iterator.set_postfix({"loss": f"{loss.item() * ACCUM_STEPS:.4f}"})
-        
-        avg_loss = total_loss / len(dataloader)
-        print(f"Epoch {epoch+1} Avg Loss: {avg_loss:.4f}")
-        
-        if avg_loss < best_loss:
-            best_loss = avg_loss
-            torch.save(model.state_dict(), Path(config["model_folder"]) / "best_ptr.pt")
+            optimizer.zero_grad()
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            optimizer.step()
+
+            total_loss += loss.item()
+            iterator.set_postfix({"loss": f"{loss.item():.4f}"})
+
+    torch.save(model.state_dict(), model_folder / "best_model.pt")
+    print(f"Model saved to {model_folder / 'best_model.pt'}")
 
 if __name__ == "__main__":
-    train()
+    Train()

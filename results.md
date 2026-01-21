@@ -9,4 +9,10 @@ Results:
 AVG: 47.66% reduction!!
 
 BUGG: offset maxxar på 200, borde maxxa på takt + drift - size
-Overfitting?
+Overfitting? Stämmer alla constraints?
+
+PointerNetwork
+
+Reduction med 85% from the get-go då vi overfittar, datan ser fine ut, inga constraints brutna.
+
+PointerNetwork 100 test, 500000 training

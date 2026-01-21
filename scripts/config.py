@@ -6,7 +6,7 @@ def get_config():
         "stations": 35,
         "takt": 700,
         "drift": 200,
-        "gap": 5,
-        "training_multiplier": 420
+        "gap": 15,
+        "training_multiplier": 5000
     }
 

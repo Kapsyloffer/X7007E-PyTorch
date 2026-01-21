@@ -2,6 +2,7 @@ import random
 import json
 from pathlib import Path
 from config import get_config
+from tqdm import tqdm
 
 config = get_config()
 
@@ -71,7 +72,7 @@ def generate_sequence(num_objects, start_id=1):
     
     prev_list = []
 
-    for i in range(0, num_objects):
+    for i in tqdm(range(0, num_objects), desc="Allocating objects", leave=False):
         prev = None
         for j in range(stations):
             T = i + j + 1
@@ -105,7 +106,7 @@ def generate_sequence(num_objects, start_id=1):
         }
 
     json_output = []
-    for i, last_alloc in enumerate(prev_list):
+    for i, last_alloc in enumerate(tqdm(prev_list, desc="Processing JSON", leave=False)):
         chain_id = start_id + i 
         json_entry = chain_to_json_recursive(last_alloc, chain_id)
         json_output.append(json_entry)
@@ -117,6 +118,7 @@ def run_generation():
     Path("jsons").mkdir(parents=True, exist_ok=True)  
 
     # 1. Generate the massive training list
+    print(f"Generating Training Data ({objects * TRAINING_MULTIPLIER} items)...")
     training_data = generate_sequence(objects * TRAINING_MULTIPLIER, start_id=1)
 
     # 2. Extract a small chunk (100 items) for Overfitting Tests

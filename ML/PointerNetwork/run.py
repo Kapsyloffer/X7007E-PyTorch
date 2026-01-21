@@ -1,70 +1,86 @@
 import json
 import torch
-from pathlib import Path
-from tqdm import tqdm
 import sys
+from pathlib import Path
 
 if str(Path(__file__).resolve().parent.parent.parent) not in sys.path:
     sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
-from model import PointerNetwork
-from config import get_config
+from ML.PointerNetwork.model import PointerNetwork
+from ML.PointerNetwork.config import get_config
 
 config = get_config()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-def calculate_offsets_greedy(sorted_items):
-    current_offset = 0.0
-    for item in sorted_items:
-        item["predicted_offset"] = current_offset
-        width = sum(item["data"].values())
-        current_offset += width
-    return sorted_items
+def calculate_mmal_offsets(rearranged_objects):
+    """
+    Beräknar offsets med hänsyn till:
+    1. Stationens ledighet (Congestion)
+    2. Föregående stations färdigställande (Flow dependency: s2 kan ej börja innan s1 är klar)
+    """
+    TAKT = 700
+    DRIFT = 200
+    station_keys = [f"s{i}" for i in range(1, 36)]
+    
+    # Tidpunkt då stationen blir ledig för nästa objekt
+    station_ready_time = {k: 0 for k in station_keys}
+    
+    for obj in rearranged_objects:
+        obj["offsets"] = {}
+        for i, s_key in enumerate(station_keys):
+            size = obj["data"][s_key]
+            
+            # Gräns 1: När stationen blev ledig från föregående objekt
+            congestion_bound = station_ready_time[s_key] - TAKT
+            
+            # Gräns 2: När föregående station på samma objekt blev klar (Ditt krav!)
+            if i > 0:
+                prev_s = station_keys[i-1]
+                flow_bound = obj["offsets"][prev_s] + obj["data"][prev_s] - TAKT
+            else:
+                flow_bound = -DRIFT
+            
+            # Vi måste respektera den mest begränsande faktorn
+            earliest_start = max(congestion_bound, flow_bound)
+            
+            # Hårda drift-begränsningar: -drift <= offset <= takt - size + drift
+            min_offset = -DRIFT
+            max_offset = TAKT - size + DRIFT
+            
+            actual_offset = max(min_offset, min(max_offset, earliest_start))
+            
+            obj["offsets"][s_key] = int(actual_offset)
+            # Uppdatera när stationen är ledig för nästa objekt i kön
+            station_ready_time[s_key] = actual_offset + size
+            
+    return rearranged_objects
 
 def run_pointer():
-    input_path = config["run_path"]
-    
-    with open(input_path, "r") as f:
-        raw_data = json.load(f)
-        
-    input_features = []
-    for entry in raw_data:
-        keys = sorted(entry["data"].keys(), key=lambda x: int(x[1:]))
-        feats = [entry["data"][k] / 1000.0 for k in keys] 
-        input_features.append(feats)
-    
-    # Inference batch size = 1
-    input_tensor = torch.tensor([input_features], dtype=torch.float).to(device)
-    
-    model = PointerNetwork(
-        input_dim=config["input_dim"], 
-        hidden_dim=config["hidden_dim"],
-        d_model=config.get("d_model", 256)
-    ).to(device)
-    
-    model_path = Path(config["model_folder"]) / "best_ptr.pt"
-    if not model_path.exists():
-        return
-
-    model.load_state_dict(torch.load(model_path, map_location=device))
+    model = PointerNetwork(config["input_dim"], config["hidden_dim"], config["d_model"]).to(device)
+    model.load_state_dict(torch.load(Path(config["model_folder"]) / "best_model.pt", map_location=device))
     model.eval()
     
+    with open(config["run_path"], "r") as f:
+        data = json.load(f)
+
+    objects_to_sort = data[0] if isinstance(data[0], list) else data
+    keys = [f"s{i}" for i in range(1, 36)]
+    features = [[obj["data"][k] / 1000.0 for k in keys] for obj in objects_to_sort]
+    
+    input_tensor = torch.tensor([features], dtype=torch.float).to(device)
+
     with torch.no_grad():
-        _, pointers = model(input_tensor) 
-        
-    sort_indices = pointers.squeeze(0).cpu().tolist()
-    
-    with open(input_path, "r") as f:
-        clean_json = json.load(f)
-        
-    sorted_data = [clean_json[i] for i in sort_indices]
-    
-    final_data = calculate_offsets_greedy(sorted_data)
-    
-    with open(config["output_json"], "w") as f:
-        json.dump(final_data, f, indent=4)
-        
-    print(f"Saved to {config['output_json']}")
+        _, pointers = model(input_tensor)
+        predicted_indices = pointers.squeeze(0).cpu().numpy()
+
+    rearranged = [objects_to_sort[idx] for idx in predicted_indices]
+    optimized_rearranged = calculate_mmal_offsets(rearranged)
+
+    output_path = config.get("output_json", "predicted_ordered.json")
+    with open(output_path, "w") as f:
+        json.dump(optimized_rearranged, f, indent=4)
+
+    print(f"Reordered and offset-optimized sequence saved to {output_path}")
 
 if __name__ == "__main__":
     run_pointer()

@@ -64,7 +64,7 @@ class PointerNetwork(nn.Module):
         
         if mask is not None:
             # Use -1e4 for float16 stability
-            scores.masked_fill_(mask, -1e4)
+            scores.masked_fill_(mask, -1e9)
             
         probs = F.softmax(scores, dim=1)
         return scores, probs
@@ -74,9 +74,6 @@ class PointerNetwork(nn.Module):
         
         embedded = self.projector(x)
         
-        # FIX: The "Nuclear Option" for cuDNN errors.
-        # This forces LSTM weights to be contiguous in memory, 
-        # which fixes CUDNN_STATUS_NOT_SUPPORTED.
         self.encoder.flatten_parameters()
         
         # Ensure input is also contiguous
@@ -89,7 +86,8 @@ class PointerNetwork(nn.Module):
         dec_hidden = torch.tanh(self.encoder_h_bridge(hidden_cat))
         dec_cell = torch.tanh(self.encoder_c_bridge(cell_cat))
         
-        decoder_input = torch.zeros(batch_size, encoder_outputs.size(2)).to(x.device)
+        # Start input (BOS) - vi använder noll-vektor eller medelvärdet av encoder_outputs
+        decoder_input = torch.mean(encoder_outputs, dim=1)
         mask = torch.zeros(batch_size, seq_len, dtype=torch.bool).to(x.device)
         
         logits_list = []
@@ -98,10 +96,8 @@ class PointerNetwork(nn.Module):
         for t in range(seq_len):
             dec_hidden, dec_cell = self.decoder_cell(decoder_input, (dec_hidden, dec_cell))
             
-            # --- OPTIMIZED ATTENTION BLOCK ---
-            
-            # 1. Glimpse Attention (Calculated ONCE)
-            glimpse_scores, glimpse_probs = self.attention(
+            # 1. Glimpse (Context)
+            _, glimpse_probs = self.attention(
                 dec_hidden, encoder_outputs, 
                 self.glimpse_W1, self.glimpse_W2, self.glimpse_v, 
                 mask=mask
@@ -110,35 +106,30 @@ class PointerNetwork(nn.Module):
             # Context calculation
             context = torch.bmm(glimpse_probs.unsqueeze(1), encoder_outputs).squeeze(1)
             
-            # 2. Pointer Attention (Calculated ONCE)
+            # 2. Pointer Attention (beräknas nu med context för bättre precision)
             ptr_scores, _ = self.attention(
-                dec_hidden, encoder_outputs, 
+                dec_hidden + context[: , :self.hidden_dim], encoder_outputs, 
                 self.ptr_W1, self.ptr_W2, self.ptr_v, 
                 mask=mask
             )
             
-            # Fused Scores
-            final_scores = glimpse_scores + ptr_scores
-            
-            # ---------------------------------
-            
-            logits_list.append(final_scores)
+            logits_list.append(ptr_scores)
             
             # Select
-            probs = F.softmax(final_scores, dim=1)
-            _, predicted_idx = torch.max(probs, dim=1)
-            pointers_list.append(predicted_idx)
+            probs = F.softmax(ptr_scores, dim=1)
             
             if self.training and targets is not None:
                 selected = targets[:, t]
             else:
+                _, predicted_idx = torch.max(probs, dim=1)
                 selected = predicted_idx
 
+            pointers_list.append(selected)
+
             safe_selected = selected.clone()
-            # Handle padding (-1) indices if present in targets
             safe_selected[selected < 0] = 0
                 
-            chosen_one_hot = torch.zeros_like(final_scores, dtype=torch.bool)
+            chosen_one_hot = torch.zeros_like(ptr_scores, dtype=torch.bool)
             chosen_one_hot.scatter_(1, safe_selected.unsqueeze(1), 1)
             mask = mask | chosen_one_hot
             

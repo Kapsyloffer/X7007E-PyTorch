@@ -2,9 +2,10 @@ import json
 import torch
 from torch.utils.data import Dataset as TorchDataset
 import random
+from torch.nn.utils.rnn import pad_sequence
 
 class PointerDataset(TorchDataset):
-    def __init__(self, json_path_or_data, train_frac=0.9, shuffle=True):
+    def __init__(self, json_path_or_data, train_frac=0.9, shuffle=True, max_seq_len=100):
         if isinstance(json_path_or_data, str):
             with open(json_path_or_data, "r") as f:
                 raw = json.load(f)
@@ -27,9 +28,15 @@ class PointerDataset(TorchDataset):
                 obj_features = [obj["data"][k] / 1000.0 for k in keys]
                 sequence_tensor.append(obj_features)
 
-            if len(sequence_tensor) > 0:
-                self.samples.append(torch.tensor(sequence_tensor, dtype=torch.float))
-                self.targets.append(torch.tensor(list(range(len(sequence_tensor))), dtype=torch.long))
+            # PATCH: We perform chunking here INSIDE the sequence loop 
+            # and only append chunks to self.samples.
+            if len(sequence_tensor) > 1:
+                for i in range(0, len(sequence_tensor), max_seq_len):
+                    chunk = sequence_tensor[i:i + max_seq_len]
+                    if len(chunk) < 2:
+                        continue
+                    self.samples.append(torch.tensor(chunk, dtype=torch.float))
+                    self.targets.append(torch.tensor(list(range(len(chunk))), dtype=torch.long))
 
         total = len(self.samples)
         train_size = max(1, int(train_frac * total))
@@ -64,6 +71,16 @@ class PointerDataset(TorchDataset):
         return self.val_data, self.val_targets
 
     def collate_fn(self, batch):
-        samples = torch.stack([item[0] for item in batch], dim=0)
-        targets = torch.stack([item[1] for item in batch], dim=0)
-        return samples, targets
+        # Sortera efter längd (krävs ofta för pack_padded_sequence om du använder det senare)
+        batch.sort(key=lambda x: len(x[0]), reverse=True)
+        
+        samples = [item[0] for item in batch]
+        targets = [item[1] for item in batch]
+        
+        # Padda samples med 0.0 till den längsta sekvensen i batchen
+        padded_samples = pad_sequence(samples, batch_first=True, padding_value=0.0)
+        
+        # Padda targets med -1 (eller annat index som CrossEntropyLoss ignorerar via ignore_index)
+        padded_targets = pad_sequence(targets, batch_first=True, padding_value=-1)
+        
+        return padded_samples, padded_targets

@@ -1,3 +1,4 @@
+python scripts/new_json.py
 python ML/PointerNetwork/run.py
 python -m scripts.percentage
 #cp jsons/predicted.json jsons/predicted_old.json

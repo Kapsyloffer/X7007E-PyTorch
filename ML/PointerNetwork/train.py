@@ -6,6 +6,9 @@ from pathlib import Path
 from tqdm import tqdm
 from torch.utils.data import DataLoader
 
+os.environ["PYTORCH_ALLOC_CONF"] = "expandable_segments:True"
+os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+
 if str(Path(__file__).resolve().parent.parent.parent) not in sys.path:
      sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
@@ -13,15 +16,18 @@ from ML.PointerNetwork.model import PointerNetwork
 from ML.PointerNetwork.dataset import PointerDataset
 from ML.PointerNetwork.config import get_config
 
-os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
-
 config = get_config()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def Train():
-    dataset = PointerDataset(config["training_path"])
+    dataset = PointerDataset(config["training_path"], max_seq_len=100)
     batch_size = min(config["batch_size"], len(dataset))
-    train_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, collate_fn=dataset.collate_fn)
+    train_loader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        collate_fn=dataset.collate_fn
+    )
     
     model = PointerNetwork(
         input_dim=config["input_dim"],
@@ -30,14 +36,13 @@ def Train():
     ).to(device)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=config["lr"], weight_decay=1e-2)
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss(ignore_index=-1)
     
     model_folder = Path(config["model_folder"])
     model_folder.mkdir(parents=True, exist_ok=True)
 
     model.train()
     for epoch in range(config["num_epochs"]):
-        total_loss = 0
         iterator = tqdm(train_loader, desc=f"Epoch {epoch+1}/{config['num_epochs']}")
         
         for batch_samples, batch_targets in iterator:
@@ -45,14 +50,16 @@ def Train():
             batch_targets = batch_targets.to(device)
 
             logits, _ = model(batch_samples, targets=batch_targets)
-            loss = criterion(logits.view(-1, logits.size(-1)), batch_targets.view(-1))
+            loss = criterion(
+                logits.view(-1, logits.size(-1)),
+                batch_targets.view(-1)
+            )
             
             optimizer.zero_grad()
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
 
-            total_loss += loss.item()
             iterator.set_postfix({"loss": f"{loss.item():.4f}"})
 
     torch.save(model.state_dict(), model_folder / "best_model.pt")

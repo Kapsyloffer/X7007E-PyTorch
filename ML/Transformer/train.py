@@ -113,7 +113,7 @@ def Train():
     
     model.train() 
     best_val_loss = float('inf')
-    # patience = math.floor(config["num_epochs"] /6)
+    patience = math.floor(config["num_epochs"])
     trigger_times = 0
 
     model_folder = Path(config["model_folder"])
@@ -151,16 +151,16 @@ def Train():
         
         print(f"Epoch: {epoch+1} | Train Loss: {avg_loss:.6f} | Val Loss: {current_val_loss:.6f}")
 
-        # if current_val_loss < best_val_loss:
-        #      best_val_loss = current_val_loss
-        #      trigger_times = 0
-        #      torch.save(model.state_dict(), model_folder / "best_model.pt")
-        # else:
-        #      trigger_times += 1
-        #      print(trigger_times, "/", patience)
-        #      if trigger_times >= patience:
-        #          print(f"Early stopping at epoch {epoch+1}")
-        #          break
+        if current_val_loss < best_val_loss:
+             best_val_loss = current_val_loss
+             trigger_times = 0
+             torch.save(model.state_dict(), model_folder / "best_model.pt")
+        else:
+             trigger_times += 1
+             # print(trigger_times, "/", patience)
+             if trigger_times >= patience:
+                 print(f"Early stopping at epoch {epoch+1}")
+                 break
     
     print(f"Best Model saved to {model_folder / 'best_model.pt'}")
 

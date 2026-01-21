@@ -12,7 +12,7 @@ takt = config["takt"]
 drift_area = config["drift"]
 gap = config["gap"]
 
-seed = 1337
+# seed = 1337
 min_size = 300
 max_size = takt + 2 * drift_area
 
@@ -65,7 +65,7 @@ class Allocation:
         return max(-drift_area, min(offset, drift_area))
 
 
-def generate_sequence(num_objects, start_id=1):
+def generate_sequence(num_objects, start_id=1, random_ids=False):
     max_t = num_objects + stations + 100
     grid_w = stations + 10
     allocation_grid = [[None for _ in range(grid_w)] for _ in range(max_t)]
@@ -107,14 +107,17 @@ def generate_sequence(num_objects, start_id=1):
 
     json_output = []
     for i, last_alloc in enumerate(tqdm(prev_list, desc="Processing JSON", leave=False)):
-        chain_id = start_id + i 
+        if(random_ids):
+            chain_id = random.randint(0,9999*TRAINING_MULTIPLIER)
+        else:
+            chain_id = start_id + i 
         json_entry = chain_to_json_recursive(last_alloc, chain_id)
         json_output.append(json_entry)
         
     return json_output
 
 def run_generation():
-    random.seed(seed)
+    # random.seed(seed)
     Path("jsons").mkdir(parents=True, exist_ok=True)  
 
     # 1. Generate the massive training list
@@ -133,8 +136,9 @@ def run_generation():
         json.dump(training_data, f, indent=4)
 
     print(f"Generating Test Data ({objects} items)...")
-    test_data = generate_sequence(objects, start_id=(objects * TRAINING_MULTIPLIER) + 1)
+    test_data = generate_sequence(objects, start_id=1, random_ids=True)
     
+    # random.seed(seed+1)
     # Shuffle the test data to create the puzzle
     random.shuffle(test_data)
 

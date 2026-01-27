@@ -1,12 +1,24 @@
 from pathlib import Path
 
 def get_config():
+    objects = 10
+    stations = 35
+    takt = 700
+    drift = 200
+    gap = 5
+    multiplier = 1
+    min_size = 100
+    max_size = takt + 2*drift
     return {
-        "objects": 100,
-        "stations": 35,
-        "takt": 700,
-        "drift": 200,
-        "gap": 15,
-        "training_multiplier": 5000
+        "objects": objects,
+        "stations": stations,
+        "takt": takt,
+        "drift": drift,
+        "gap": gap,
+        "training_multiplier": multiplier,
+        "min_size": min_size,
+        "max_size": max_size
+# max_size = takt + 2 * drift_area
+
     }
 

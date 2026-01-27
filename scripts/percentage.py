@@ -11,11 +11,14 @@ def percentage():
     denominator = max(1, shuffled_count) 
     
     ratio = predicted_count / denominator
-    ratio_percentage = ratio * 100
+
+    ratio_true = ratio * 100
+    ratio_percentage = (1-ratio) * 100
 
     print(f"Predicted: {predicted_count}")
     print(f"Shuffled:  {shuffled_count}")
-    print(f"Percentage Ratio (Predicted / Shuffled): {ratio_percentage:.2f}%")
+    print(f"Ratio (pred/shuff): {ratio_true:.2f}%")
+    print(f"Improvement: {ratio_percentage:.2f}%")
     return ratio_percentage
 
 percentage()

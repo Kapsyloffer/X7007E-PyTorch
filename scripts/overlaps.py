@@ -1,5 +1,6 @@
 import json
 import argparse
+from tqdm import tqdm
 from scripts.config import get_config
 
 config = get_config()
@@ -20,7 +21,7 @@ def overlaps(json_file_path):
     overlap_count = 0
     placed_rects = {y: [] for y in range(stations)}
 
-    for obj_idx, obj in enumerate(data):
+    for obj_idx, obj in enumerate(tqdm(data)):
         start_x = obj_idx * obj_spacing
 
         for station_key, value in obj["data"].items():

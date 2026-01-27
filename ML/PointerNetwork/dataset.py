@@ -24,12 +24,10 @@ class PointerDataset(TorchDataset):
             sequence_tensor = []
             for obj in sequence:
                 # Extrahera stationer s1..s35 i strikt ordning
-                keys = [f"s{i}" for i in range(1, 36)]
+                keys = [f"s{i}" for i in range(1, 36)] #FIXME
                 obj_features = [obj["data"][k] / 1000.0 for k in keys]
                 sequence_tensor.append(obj_features)
 
-            # PATCH: We perform chunking here INSIDE the sequence loop 
-            # and only append chunks to self.samples.
             if len(sequence_tensor) > 1:
                 for i in range(0, len(sequence_tensor), max_seq_len):
                     chunk = sequence_tensor[i:i + max_seq_len]

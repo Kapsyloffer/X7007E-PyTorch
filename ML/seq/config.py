@@ -11,5 +11,6 @@ def get_config():
 
         "d_model": 64, 
         "dropout": 0.1, 
-        "model_folder": "ML/weights",
+        "model_folder": "ML/weights_seq",
     }
+

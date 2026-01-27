@@ -11,10 +11,8 @@ stations = config["stations"]
 takt = config["takt"]
 drift_area = config["drift"]
 gap = config["gap"]
-
-# seed = 1337
-min_size = 300
-max_size = takt + 2 * drift_area
+min_size = config["min_size"] 
+max_size = config["max_size"] 
 
 TRAINING_MULTIPLIER = config["training_multiplier"] 
 
@@ -59,10 +57,12 @@ class Allocation:
         allocation_grid[self.T][self.S] = self
 
     def offset_calc(self, slot_left, slot_right, new_size):
-        offset_left = slot_left - self.T * takt 
-        offset_right = takt + drift_area - offset_left - new_size
-        offset = offset_left + (offset_right / 2) 
-        return max(-drift_area, min(offset, drift_area))
+            current_left = slot_left - (self.T * takt)
+            target_window_size = takt - current_left
+            slack = max(0, target_window_size - new_size)
+            offset = current_left + (slack / 2)
+            max_valid_offset = takt + drift_area - new_size
+            return max(-drift_area, min(offset, max_valid_offset))
 
 
 def generate_sequence(num_objects, start_id=1, random_ids=False):
@@ -108,7 +108,7 @@ def generate_sequence(num_objects, start_id=1, random_ids=False):
     json_output = []
     for i, last_alloc in enumerate(tqdm(prev_list, desc="Processing JSON", leave=False)):
         if(random_ids):
-            chain_id = random.randint(0,9999*TRAINING_MULTIPLIER)
+            chain_id = random.randint(0,9999)
         else:
             chain_id = start_id + i 
         json_entry = chain_to_json_recursive(last_alloc, chain_id)
@@ -136,7 +136,7 @@ def run_generation():
         json.dump(training_data, f, indent=4)
 
     print(f"Generating Test Data ({objects} items)...")
-    test_data = generate_sequence(objects, start_id=1, random_ids=True)
+    test_data = generate_sequence(objects, start_id=1, random_ids=False)
     
     # random.seed(seed+1)
     # Shuffle the test data to create the puzzle

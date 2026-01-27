@@ -5,18 +5,16 @@ import random
 
 class Dataset(TorchDataset):
     def __init__(self, json_path_or_data, train_frac=0.8, shuffle=False, augment=False):
-        # Allow passing raw list data directly to ensure 1-to-1 matching
         if isinstance(json_path_or_data, str):
             with open(json_path_or_data, "r") as f:
                 raw = json.load(f)
         else:
             raw = json_path_or_data
         
-        self.augment = augment # Enable/disable augmentation
+        self.augment = augment 
         self.samples = [] 
         self.targets = []
 
-        # We map "s1" -> 1, "s35" -> 35
         for entry in raw:
             keys = sorted(entry["data"].keys(), key=lambda x: int(x[1:]))
             
@@ -38,7 +36,6 @@ class Dataset(TorchDataset):
             self.samples.append(torch.tensor(sample_tensor, dtype=torch.float))
             self.targets.append(torch.tensor(target_tensor, dtype=torch.float))
 
-        # Train / val split logic
         total_samples = len(self.samples)
         train_size = int(train_frac * total_samples)
 
@@ -50,7 +47,6 @@ class Dataset(TorchDataset):
         self.train_data = self.samples[:train_size]
         self.train_targets = self.targets[:train_size]
 
-        # Validation data never gets augmented
         self.val_data = self.samples[train_size:]
         self.val_targets = self.targets[train_size:]
 
@@ -63,8 +59,6 @@ class Dataset(TorchDataset):
         sample = self.train_data[idx].clone()
         target = self.train_targets[idx].clone()
 
-        # --- DATA AUGMENTATION ---
-        # Add +/- 1% noise to the size values (index 1) during training
         if self.augment:
              noise = (torch.rand_like(sample[:, 1]) * 0.02) - 0.01 
              sample[:, 1] += noise

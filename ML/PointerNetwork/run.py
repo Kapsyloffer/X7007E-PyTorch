@@ -13,14 +13,9 @@ config = get_config()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def calculate_mmal_offsets(rearranged_objects):
-    """
-    Beräknar offsets med hänsyn till:
-    1. Stationens ledighet (Congestion)
-    2. Föregående stations färdigställande (Flow dependency: s2 kan ej börja innan s1 är klar)
-    """
-    TAKT = 700
+    TAKT = 700 #FIXME
     DRIFT = 200
-    station_keys = [f"s{i}" for i in range(1, 36)]
+    station_keys = [f"s{i}" for i in range(1, 36)] #FIXME
     
     # Tidpunkt då stationen blir ledig för nästa objekt
     station_ready_time = {k: 0 for k in station_keys}
@@ -64,7 +59,7 @@ def run_pointer():
         data = json.load(f)
 
     objects_to_sort = data[0] if isinstance(data[0], list) else data
-    keys = [f"s{i}" for i in range(1, 36)]
+    keys = [f"s{i}" for i in range(1, 36)] #FIXME
     features = [[obj["data"][k] / 1000.0 for k in keys] for obj in objects_to_sort]
     
     input_tensor = torch.tensor([features], dtype=torch.float).to(device)

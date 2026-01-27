@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import random
 
 class EncoderRNN(nn.Module):
@@ -80,30 +81,50 @@ class Seq2Seq(nn.Module):
         self.decoder = decoder
         self.device = device
 
-    def forward(self, src, tgt, teacher_forcing_ratio=0.5):
+    def forward(self, src, tgt=None, teacher_forcing_ratio=0.5):
         # src: (Batch, Seq_Len, Input_Size)
-        # tgt: (Batch, Seq_Len, Output_Size)
+        # tgt: (Batch, Seq_Len) - Indices (Optional)
         
         batch_size = src.shape[0]
-        tgt_len = tgt.shape[1]
         tgt_vocab_size = self.decoder.output_size
+        
+        # Determine sequence length
+        if tgt is not None:
+            tgt_len = tgt.shape[1]
+        else:
+            tgt_len = src.shape[1] 
         
         outputs = torch.zeros(batch_size, tgt_len, tgt_vocab_size).to(self.device)
         encoder_outputs, hidden, cell = self.encoder(src)
+        
+        # Initialize decoder input (Batch, 1, Output_Size) with zeros
         decoder_input = torch.zeros(batch_size, 1, tgt_vocab_size).to(self.device)
+        
+        # Pre-calculate One-Hot for teacher forcing if tgt is provided
+        tgt_one_hot = None
+        if tgt is not None:
+            # Ensure tgt indices are within vocab range
+            safe_tgt = tgt.clone()
+            safe_tgt[safe_tgt >= tgt_vocab_size] = tgt_vocab_size - 1
+            safe_tgt[safe_tgt < 0] = 0
+            tgt_one_hot = F.one_hot(safe_tgt, num_classes=tgt_vocab_size).float()
         
         for t in range(tgt_len):
             output, hidden, cell, _ = self.decoder(decoder_input, hidden, cell, encoder_outputs)
             outputs[:, t, :] = output.squeeze(1)
             
             # Teacher forcing: decide whether to use actual target or predicted output
-            teacher_force = random.random() < teacher_forcing_ratio
+            teacher_force = random.random() < teacher_forcing_ratio if tgt is not None else False
+            
             if teacher_force and t < tgt_len - 1:
-                decoder_input = tgt[:, t, :].unsqueeze(1)
+                # Use ground truth (One-Hot Encoded)
+                decoder_input = tgt_one_hot[:, t, :].unsqueeze(1)
             else:
-                decoder_input = output # Auto-regressive
+                # Auto-regressive: Use softmax probability distribution as continuous input for next step
+                decoder_input = torch.softmax(output, dim=2)
                 
-        return outputs
+        predictions = outputs.argmax(dim=2)
+        return outputs, predictions
 
 def build_seq2seq(input_dim, hidden_dim, output_dim, num_layers=2, dropout=0.5, device='cpu'):
     enc = EncoderRNN(input_dim, hidden_dim, num_layers, dropout)

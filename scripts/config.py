@@ -1,7 +1,7 @@
 from pathlib import Path
 
 def get_config():
-    objects = 10
+    objects = 10000
     stations = 35
     takt = 700
     drift = 200

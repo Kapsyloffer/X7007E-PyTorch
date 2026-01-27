@@ -4,5 +4,6 @@ notes.md
 **/__pycache__/ 
 /ML/weights/
 /ML/weights_ptr/
+/ML/weights_seq/
 /runs/
 /checkpoints/

@@ -9,13 +9,17 @@ if str(Path(__file__).resolve().parent.parent.parent) not in sys.path:
 from ML.seq.model import build_seq2seq
 from ML.seq.config import get_config
 
+from scripts.config import get_obj_config
+
 config = get_config()
+obj_config = get_obj_config()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+STN = obj_config["stations"] + 1
 def calculate_mmal_offsets(rearranged_objects):
-    TAKT = 700 #FIXME
-    DRIFT = 200
-    station_keys = [f"s{i}" for i in range(1, 36)] #FIXME
+    TAKT = obj_config["takt"]
+    DRIFT = obj_config["drift"] 
+    station_keys = [f"s{i}" for i in range(1, STN)] 
     
     station_ready_time = {k: 0 for k in station_keys}
     
@@ -67,7 +71,7 @@ def run_seq():
         data = json.load(f)
 
     objects_to_sort = data[0] if isinstance(data[0], list) else data
-    keys = [f"s{i}" for i in range(1, 36)] #FIXME
+    keys = [f"s{i}" for i in range(1, STN)] 
     features = [[obj["data"][k] / 1000.0 for k in keys] for obj in objects_to_sort]
     
     input_tensor = torch.tensor([features], dtype=torch.float).to(device)

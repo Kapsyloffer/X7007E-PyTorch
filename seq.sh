@@ -6,3 +6,4 @@ python -m scripts.percentage
 #python scripts/refit.py jsons/predicted.json 
 #python -m scripts.percentage
 python scripts/verify.py
+python -m scripts.check_constraints

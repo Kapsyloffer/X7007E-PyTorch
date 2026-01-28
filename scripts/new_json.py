@@ -1,10 +1,10 @@
 import random
 import json
 from pathlib import Path
-from config import get_config
+from config import get_obj_config
 from tqdm import tqdm
 
-config = get_config()
+config = get_obj_config()
 
 objects = config["objects"]
 stations = config["stations"]

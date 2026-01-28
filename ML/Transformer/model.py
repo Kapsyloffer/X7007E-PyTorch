@@ -1,48 +1,52 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F  # <--- NEW IMPORT
 import math
 
 class InputEmbeddings(nn.Module):
     
     #d_model = dimensioner
-    def __init__(self, d_model: int, vocab_size: int):
+    def __init__(self, d_model: int, input_dim: int):
         super().__init__()
         self.d_model = d_model
-        self.vocab_size = vocab_size
-        self.embedding = nn.Embedding(vocab_size, d_model)
+        self.input_dim = input_dim
+        # Replaced Embedding with Linear for continuous features
+        self.projection = nn.Linear(input_dim, d_model)
 
     def forward(self, x):
-        return self.embedding(x) * math.sqrt(self.d_model)# <-- Embedding är som en dictionairy kinda
+        return self.projection(x) * math.sqrt(self.d_model)
         # In the embedding layers, we multiply those weights by sqrt(d_model)
 
 class PositionalEncoding(nn.Module):
 
     # Dropout hjälper med att reducera overfitting
-    # Seq_length = längden av sekvensen som ska behandlas
-    def __init__(self, d_model: int, seq_length: int, dropout: float):
+    def __init__(self, d_model: int, dropout: float):
         super().__init__()
         self.d_model = d_model
-        self.seq_length = seq_length
         self.dropout = nn.Dropout(dropout)
-        #Sequence length to d_model because we need vectors of dmodel size but we need seqlength (max size)
-        #pe = PositionalEncoding
-        pe = torch.zeros(seq_length, d_model)
+        # Dictionary unhooked. 
+    
+    def forward(self, x):
+        # x shape: [Batch, Seq_Len, d_model]
+        seq_length = x.size(1)
+        device = x.device
+        
+        #pe = PositionalEncoding (based on input length)
+        pe = torch.zeros(seq_length, self.d_model, device=device)
+        
         # Represents the position of the model inside the sequence
-        position = torch.arange(0, seq_length, dtype=torch.float).unsqueeze(1) #(Seq_len, 1) <-- Tensor
-        div_term = torch.exp(torch.arange(0, d_model, 2).float() * -math.log(10000.0) / d_model)
+        position = torch.arange(0, seq_length, dtype=torch.float, device=device).unsqueeze(1) #(Seq_len, 1) <-- Tensor
+        div_term = torch.exp(torch.arange(0, self.d_model, 2, dtype=torch.float, device=device) * -math.log(10000.0) / self.d_model)
+        
         #Apply the sin to the even positions (cos to uneven)
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
         # ^ x::y, start at x, go forward by y
 
         #Batch dimension to "sentence"
-        pe = pe.unsqueeze(0) #(1, seq_length, d_model)
+        pe = pe.unsqueeze(0) 
 
-        #buffer of module - Not used as data but saved the state of the model
-        self.register_buffer('pe', pe)
-    
-    def forward(self, x):
-        x = x + (self.pe[:, :x.shape[1], :]).requires_grad_(False) # Not learned tensor
+        x = x + (pe).requires_grad_(False) # Not learned tensor
         return self.dropout(x)
     
 class LayerNormalization(nn.Module):
@@ -99,9 +103,20 @@ class MultiHeadAttention(nn.Module):
     
     @staticmethod
     def attention(query, key, value, mask, dropout: nn.Dropout):
+        # Flash Attention 
+        if hasattr(F, "scaled_dot_product_attention"):
+             # query shape: (Batch, h, seq, d_k)
+             # mask shape: (B, 1, 1, S) or (1, S, S) usually works.
+             
+             return F.scaled_dot_product_attention(
+                 query, key, value,
+                 attn_mask=mask if mask is not None else None,
+                 dropout_p=dropout.p if dropout else 0.0,
+                 is_causal=False 
+             ), None
+        
+        # --- Fallback for old PyTorch (Memory Heavy) ---
         d_k = query.shape[-1]
-
-        # (Batch, h, seq_len, d_k) -> (Batch, h, seq_len, seq_len)
         attention_scores = (query @ key.transpose(-2, -1)) / math.sqrt(d_k)
         if mask is not None:
             attention_scores.masked_fill(mask == 0, -1e9)
@@ -114,7 +129,7 @@ class MultiHeadAttention(nn.Module):
     
     # mask if we want some words to not interact with other words
     def forward(self, q, k, v, mask):
-       
+        
         # (Batch, Seq_Len, d_model) -> (Batch, Seq_Len, d_model)
         query = self.w_q(q) 
  
@@ -201,23 +216,30 @@ class Decoder(nn.Module):
             x = layer(x, encoder_output, src_mask, tgt_mask)
         return self.norm(x)
 
-class ProjectionLayer(nn.Module):
+class PointerHead(nn.Module):
 
-    def __init__(self, d_model: int, vocab_size: int):
+    def __init__(self, d_model: int):
         super().__init__()
-        self.proj = nn.Linear(d_model, vocab_size)
+        self.W_q = nn.Linear(d_model, d_model)
+        self.W_k = nn.Linear(d_model, d_model)
 
-    # def forward(self, x):
-    #     # (Batch, seq_len, d_model) -> (Batch, seq_len, vocab_size)
-    #     return torch.log_softmax(self.proj(x), dim = -1)
-
-    def forward(self, x):
-            # (Batch, seq_len, d_model) -> (Batch, seq_len, vocab_size)
-            return self.proj(x) # Returnerar raw logits för CrossEntropyLoss
+    def forward(self, decoder_output, encoder_output):
+            # decoder_output: (Batch, tgt_len, d_model)
+            # encoder_output: (Batch, src_len, d_model)
+            
+            # Project both to point space
+            q = self.W_q(decoder_output)
+            k = self.W_k(encoder_output)
+            
+            # Pointer Attention Score
+            # (Batch, tgt_len, d_model) @ (Batch, d_model, src_len) -> (Batch, tgt_len, src_len)
+            scores = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(q.size(-1))
+            
+            return scores # Raw logits for CrossEntropyLoss
 
 class Transformer(nn.Module):
     
-    def __init__(self, encoder: Encoder, decoder: Decoder, src_embed: InputEmbeddings, tgt_embed: InputEmbeddings, src_pos: PositionalEncoding, tgt_pos: PositionalEncoding, projection_layer: ProjectionLayer):
+    def __init__(self, encoder: Encoder, decoder: Decoder, src_embed: InputEmbeddings, tgt_embed: InputEmbeddings, src_pos: PositionalEncoding, tgt_pos: PositionalEncoding, pointer_head: PointerHead, input_dim: int):
         super().__init__()
         self.encoder = encoder
         self.decoder = decoder
@@ -225,7 +247,9 @@ class Transformer(nn.Module):
         self.tgt_embed = tgt_embed
         self.src_pos = src_pos
         self.tgt_pos = tgt_pos
-        self.projection_layer = projection_layer
+        self.pointer_head = pointer_head
+        
+        self.sos_token = nn.Parameter(torch.randn(1, 1, input_dim))
 
     def encode(self, src, src_mask):
         src = self.src_embed(src)
@@ -237,29 +261,42 @@ class Transformer(nn.Module):
         tgt = self.tgt_pos(tgt)
         return self.decoder(tgt, encoder_output, src_mask, tgt_mask)
 
-    def project(self, x):
-        return self.projection_layer(x)
+    def project(self, dec_out, enc_out):
+        return self.pointer_head(dec_out, enc_out)
 
-    def forward(self, src_embed, tgt_embed, src_mask=None, tgt_mask=None):
-        encoder_output = self.encode(src_embed, src_mask)
-        decoder_output = self.decode(tgt_embed, encoder_output, src_mask, tgt_mask)
+    def forward(self, src, tgt_indices=None, src_mask=None, tgt_mask=None):
+        # src: [Batch, Seq_Len, Input_Dim]
+        # tgt_indices: [Batch, Seq_Len] (Indices pointing to sorted src) for Teacher Forcing
+        
+        encoder_output = self.encode(src, src_mask)
+        
+        if tgt_indices is not None:
+            # src is (B, S, F), indices (B, T). Target (B, T, F)
+            B, S, F = src.shape
+            expanded_indices = tgt_indices.unsqueeze(-1).expand(-1, -1, F)
+            tgt_features = torch.gather(src, 1, expanded_indices)
+            sos = self.sos_token.expand(B, 1, -1)
+            decoder_input_features = torch.cat([sos, tgt_features[:, :-1, :]], dim=1)
+        else:
+            B, S, F = src.shape
+            decoder_input_features = self.sos_token.expand(B, 1, -1)
 
-        # [batch_size, seq_len, vocab_size]
-        output = self.projection_layer(decoder_output)
+        decoder_output = self.decode(encoder_output, src_mask, decoder_input_features, tgt_mask)
+
+        # [batch_size, tgt_len, src_len] 
+        output = self.project(decoder_output, encoder_output)
         return output
 
-def build_transformer(src_vocab_size: int, tgt_vocab_size: int, src_seq_len: int, tgt_seq_len: int, d_model: int = 512, N: int = 6, h: int = 8, dropout: float = 0.1, d_ff = 2048) -> Transformer:
+def build_transformer(input_dim: int, d_model: int = 512, N: int = 6, h: int = 8, dropout: float = 0.1, d_ff = 2048) -> Transformer:
     # N = number of blocks
     # h = number of heads
 
-    #embedding layers
-    src_embed = InputEmbeddings(d_model, src_vocab_size)
-    tgt_embed = InputEmbeddings(d_model, tgt_vocab_size)
+    #embedding layers using input_dim instead of vocab_size
+    src_embed = InputEmbeddings(d_model, input_dim)
+    tgt_embed = InputEmbeddings(d_model, input_dim)
 
-    #positional encoding layers 
-    src_pos = PositionalEncoding(d_model, src_seq_len, dropout)
-    tgt_pos = PositionalEncoding(d_model, tgt_seq_len, dropout) 
-    # ^ tgt_pos not needed, as they do the same thing and don't have any parameters  -- can be removed as optimization i nthe future
+    src_pos = PositionalEncoding(d_model, dropout)
+    tgt_pos = PositionalEncoding(d_model, dropout) 
 
     #Create the encoder and decoder blocks
     encoder_blocks = []
@@ -282,11 +319,10 @@ def build_transformer(src_vocab_size: int, tgt_vocab_size: int, src_seq_len: int
     encoder = Encoder(nn.ModuleList(encoder_blocks))
     decoder = Decoder(nn.ModuleList(decoder_blocks))
 
-    # Projection layer 
-    projection_layer = ProjectionLayer(d_model, tgt_vocab_size)
+    # Projection layer is now replaced by PointerHead
+    pointer_head = PointerHead(d_model)
 
-
-    transformer = Transformer(encoder, decoder, src_embed, tgt_embed, src_pos, tgt_pos, projection_layer)
+    transformer = Transformer(encoder, decoder, src_embed, tgt_embed, src_pos, tgt_pos, pointer_head, input_dim)
 
     #initialize parameters 
     for p in transformer.parameters():

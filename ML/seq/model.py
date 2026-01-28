@@ -126,7 +126,7 @@ class Seq2Seq(nn.Module):
         predictions = outputs.argmax(dim=2)
         return outputs, predictions
 
-def build_seq2seq(input_dim, hidden_dim, output_dim, num_layers=2, dropout=0.5, device='cpu'):
+def build_seq2seq(input_dim, hidden_dim, output_dim, num_layers=2, dropout=0.5, device='cuda'):
     enc = EncoderRNN(input_dim, hidden_dim, num_layers, dropout)
     dec = DecoderRNN(hidden_dim, output_dim, num_layers, dropout)
     

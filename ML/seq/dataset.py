@@ -3,6 +3,9 @@ import torch
 from torch.utils.data import Dataset as TorchDataset
 import random
 from torch.nn.utils.rnn import pad_sequence
+from scripts.config import get_obj_config
+
+obj_config = get_obj_config()
 
 class SeqDataset(TorchDataset):
     def __init__(self, json_path_or_data, train_frac=0.9, shuffle=True, max_seq_len=100):
@@ -23,8 +26,7 @@ class SeqDataset(TorchDataset):
             
             sequence_tensor = []
             for obj in sequence:
-                # Extract stations s1..s35
-                keys = [f"s{i}" for i in range(1, 36)] #FIXME
+                keys = [f"s{i}" for i in range(1, obj_config["stations"]+1)] 
                 obj_features = [obj["data"][k] / 1000.0 for k in keys]
                 sequence_tensor.append(obj_features)
 

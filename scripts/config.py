@@ -1,12 +1,12 @@
 from pathlib import Path
 
-def get_config():
-    objects = 10000
-    stations = 35
+def get_obj_config():
+    objects = 100
+    stations = 2
     takt = 700
     drift = 200
     gap = 5
-    multiplier = 1
+    multiplier = 3
     min_size = 100
     max_size = takt + 2*drift
     return {

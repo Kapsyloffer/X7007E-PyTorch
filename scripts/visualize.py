@@ -3,9 +3,9 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import argparse
 import numpy as np
-from config import get_config
+from config import get_obj_config
 
-config = get_config()
+config = get_obj_config()
 
 parser = argparse.ArgumentParser()
 parser.add_argument("json_file", type=str)

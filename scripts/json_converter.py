@@ -2,9 +2,9 @@ import csv
 import json
 import sys
 import os
-from config import get_config
+from config import get_obj_config
 
-config = get_config()
+config = get_obj_config()
 
 takt_time = config["takt"]
 allocations = []
